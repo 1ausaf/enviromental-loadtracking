@@ -1,0 +1,37 @@
+// HK ENV. WEB-APP — Prisma schema
+// Source of truth: proposal.docx (Section 2). Models grow phase-by-phase
+// per HK_ENV_WebApp_ClaudeCode_BuildPlan.md.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Prisma 7+ reads the connection URL from prisma.config.ts at migration time
+  // and from a runtime adapter at query time. See prisma.config.ts and src/lib/db.ts.
+}
+
+// Three operational roles per proposal Section 2.1.
+// OWNER  — full access, including exception approvals (Section 2.8).
+// ADMIN  — day-to-day management (dispatch, ticket review, users, projects).
+// OPERATOR — drivers in the field (accept dispatch, run trips, submit tickets).
+enum Role {
+  OWNER
+  ADMIN
+  OPERATOR
+}
+
+// Minimal Phase 0 model. Fleshed out in Phase 1 (auth, 2FA secret, password hash)
+// and Phase 2 (employeeId enforcement, deactivation workflow, audit fields).
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       Role     @default(OPERATOR)
+  employeeId String?  @unique
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
