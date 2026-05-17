@@ -14,24 +14,41 @@ export default async function AdminPage() {
         <p className="mt-2 text-zinc-600">
           Day-to-day management. New tools land here each phase.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Link
-            href="/admin/users"
-            className="inline-flex h-10 items-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Manage users →
-          </Link>
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <AdminLink href="/admin/users" title="Users" sub="Create, deactivate, delete" />
+          <AdminLink href="/admin/trucks" title="Trucks" sub="Plates, capacity, status, assignment" />
+          <AdminLink href="/admin/operators" title="Drivers" sub="Phone, licence, photo, load counts" />
         </div>
       </div>
 
       <PlaceholderCard
         title="Coming in later phases"
-        phase="Phase 3 / 4 / 5 / 8"
-        proposalSection="2.3 / 2.4 / 2.6 / 2.7"
+        phase="Phase 4 / 5 / 8"
+        proposalSection="2.4 / 2.6 / 2.7"
       >
-        Truck & driver management, projects with budgets, the dispatch board,
-        ticket review queue, and live arrival countdowns.
+        Projects with budgets and progress bars, the dispatch board with live
+        haul status, ticket review queue, and live arrival countdowns.
       </PlaceholderCard>
     </div>
+  );
+}
+
+function AdminLink({
+  href,
+  title,
+  sub,
+}: {
+  href: string;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 transition-shadow hover:bg-white hover:shadow-md"
+    >
+      <div className="font-semibold text-zinc-900">{title}</div>
+      <div className="text-xs text-zinc-600">{sub}</div>
+    </Link>
   );
 }

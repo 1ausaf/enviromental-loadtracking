@@ -78,6 +78,10 @@ export async function createUser(
       passwordHash,
       employeeId,
       isActive: true,
+      // Operator profile (phone, licence, photo, current truck) lives in its
+      // own table — see proposal §2.3. Auto-created so the app can always
+      // dereference user.operator for OPERATOR users.
+      operator: input.role === "OPERATOR" ? { create: {} } : undefined,
     },
     select: { id: true, email: true, name: true, role: true, employeeId: true },
   });

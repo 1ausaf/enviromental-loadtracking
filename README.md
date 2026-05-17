@@ -15,7 +15,7 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | 0 | Foundation (scaffold, shell, role-aware skeleton) | ✅ Done |
 | 1 | Authentication (email/password, password reset, 2FA, login/logout location) | ✅ Done |
 | 2 | User & role management (employee IDs, deactivate/delete, list/search) | ✅ Done |
-| 3 | Truck & driver management | ⏳ |
+| 3 | Truck & driver management (plates, types, status, assignment, photos) | ✅ Done |
 | 4 | Projects & dashboards | ⏳ |
 | 5 | Dispatch system | ⏳ |
 | 6 | GPS & location history | ⏳ |

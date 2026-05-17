@@ -28,6 +28,31 @@ enum SessionEventType {
   LOGOUT
 }
 
+// Truck equipment types — mirrors the eTicket choices (proposal §2.2).
+enum TruckType {
+  TRI_AXLE
+  END_DUMP
+  LIVE_BOTTOM
+  FLOAT
+}
+
+// MAINTENANCE / INACTIVE trucks are excluded from dispatch (§2.3).
+enum TruckStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+// Ontario commercial classes; the most common HK uses are AZ/DZ.
+// Kept as an enum so the dropdown can't drift; add classes as needed.
+enum LicenceClass {
+  AZ
+  DZ
+  BZ
+  CZ
+  G
+}
+
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -47,6 +72,56 @@ model User {
   sessions        Session[]
   sessionEvents   SessionEvent[]
   passwordResets  PasswordReset[]
+  operator        Operator?
+}
+
+// Operator-specific fields, separate from User so only drivers carry phone /
+// licence class / photo / current truck. 1:1 with User where role=OPERATOR.
+model Operator {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  phone         String?
+  licenceClass  LicenceClass?
+  photoPath     String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentTruck  Truck?        @relation("CurrentAssignment")
+  assignments   TruckAssignmentEvent[]
+}
+
+model Truck {
+  id                  String       @id @default(cuid())
+  licensePlate        String       @unique
+  type                TruckType
+  capacityTonnes      Float
+  colour              String       // colour and/or ID tag visible from outside
+  status              TruckStatus  @default(ACTIVE)
+  assignedOperatorId  String?      @unique
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  assignedOperator    Operator?    @relation("CurrentAssignment", fields: [assignedOperatorId], references: [id])
+  assignments         TruckAssignmentEvent[]
+}
+
+// Audit trail for assignment changes. The current row (releasedAt=null) for
+// any given truck mirrors Truck.assignedOperatorId; the rest is history.
+// projectId added in Phase 4 — for now assignments are global.
+model TruckAssignmentEvent {
+  id          String   @id @default(cuid())
+  truckId     String
+  operatorId  String
+  assignedAt  DateTime @default(now())
+  releasedAt  DateTime?
+
+  truck       Truck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  operator    Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  @@index([truckId])
+  @@index([operatorId])
+  @@index([releasedAt])
 }
 
 // One row per active or revoked session. Cookie carries a random token; we
