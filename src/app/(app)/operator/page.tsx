@@ -1,17 +1,72 @@
 import { requireUser } from "@/lib/session";
-import { PlaceholderCard } from "@/components/PlaceholderCard";
+import { prisma } from "@/lib/db";
+import { listDispatchesForOperator } from "@/lib/dispatches";
+import { AutoRefresh } from "@/components/AutoRefresh";
+import { OperatorDispatchCard } from "./OperatorDispatchCard";
+
+export const dynamic = "force-dynamic";
 
 export default async function OperatorPage() {
-  await requireUser("OPERATOR");
+  const user = await requireUser("OPERATOR");
+
+  // Find this user's Operator profile. Admins/Owners can view this page too
+  // but they're not operators — show an empty state if so.
+  const op = await prisma.operator.findUnique({
+    where: { userId: user.id },
+    select: { id: true },
+  });
+
+  if (!op) {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
+        Only operator accounts have dispatches. Sign in as an operator to use
+        this screen.
+      </div>
+    );
+  }
+
+  const dispatches = await listDispatchesForOperator(op.id);
 
   return (
-    <PlaceholderCard
-      title="Operator workspace"
-      phase="Phase 5 / Phase 7"
-      proposalSection="2.6 / 2.2"
-    >
-      Drivers in the field. Accept dispatch, start trips (GPS tracking begins),
-      submit digital load tickets, view personal ticket history.
-    </PlaceholderCard>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+            My dispatches
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            {dispatches.length} upcoming or in progress. Accept new ones, flag
+            issues, and tap Start when you&apos;re ready to roll.
+          </p>
+        </div>
+        <AutoRefresh intervalMs={8000} label="Refreshing" />
+      </div>
+
+      {dispatches.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center text-sm text-zinc-500">
+          No dispatches right now. New assignments show up here automatically.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {dispatches.map((d) => (
+            <OperatorDispatchCard
+              key={d.id}
+              data={{
+                id: d.id,
+                scheduledFor: d.scheduledFor.toISOString(),
+                acceptance: d.acceptance,
+                status: d.status,
+                flagReason: d.flagReason,
+                project: { name: d.project.name, client: d.project.client },
+                truck: { licensePlate: d.truck.licensePlate, colour: d.truck.colour },
+                pickupNote: d.pickupNote,
+                dumpNote: d.dumpNote,
+                notes: d.notes,
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

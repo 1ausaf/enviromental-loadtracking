@@ -59,6 +59,26 @@ enum ProjectStatus {
   COMPLETED
 }
 
+// Operator's response to a dispatch (proposal §2.6 — Accept / Flag Issue).
+// Acceptance is visible to admin WITHOUT requiring the operator's location
+// at that moment (location is captured separately at Start, Phase 6).
+enum DispatchAcceptance {
+  PENDING
+  ACCEPTED
+  FLAGGED
+}
+
+// Live haul state shown on the dispatch board (proposal §2.6).
+// CANCELLED is admin-only (revoking before Start).
+enum DispatchStatus {
+  IDLE
+  EN_ROUTE_TO_PICKUP
+  LOADING
+  EN_ROUTE_TO_DUMP
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -75,11 +95,12 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  sessions          Session[]
-  sessionEvents     SessionEvent[]
-  passwordResets    PasswordReset[]
-  operator          Operator?
-  uploadedDocuments ProjectDocument[]
+  sessions           Session[]
+  sessionEvents      SessionEvent[]
+  passwordResets     PasswordReset[]
+  operator           Operator?
+  uploadedDocuments  ProjectDocument[]
+  createdDispatches  Dispatch[]
 }
 
 // Operator-specific fields, separate from User so only drivers carry phone /
@@ -97,6 +118,7 @@ model Operator {
   currentTruck  Truck?        @relation("CurrentAssignment")
   assignments   TruckAssignmentEvent[]
   projects      OperatorOnProject[]
+  dispatches    Dispatch[]
 }
 
 model Truck {
@@ -113,6 +135,7 @@ model Truck {
   assignedOperator    Operator?    @relation("CurrentAssignment", fields: [assignedOperatorId], references: [id])
   assignments         TruckAssignmentEvent[]
   projects            TruckOnProject[]
+  dispatches          Dispatch[]
 }
 
 model Project {
@@ -132,8 +155,48 @@ model Project {
   operators       OperatorOnProject[]
   trucks          TruckOnProject[]
   documents       ProjectDocument[]
+  dispatches      Dispatch[]
 
   @@index([status])
+}
+
+model Dispatch {
+  id            String              @id @default(cuid())
+  projectId     String
+  operatorId    String              // refs Operator.id
+  truckId       String
+  scheduledFor  DateTime            // when the haul is planned to run
+  pickupNote    String?             // free-text pickup site / address
+  dumpNote      String?             // free-text dump site / address
+  notes         String?             // free-text admin notes
+
+  // Acceptance — proposal §2.6 ("Accept" or "Flag an Issue")
+  acceptance    DispatchAcceptance  @default(PENDING)
+  acceptedAt    DateTime?
+  flagReason    String?
+  flaggedAt     DateTime?
+
+  // Live status — proposal §2.6 dispatch board
+  status        DispatchStatus      @default(IDLE)
+  startedAt     DateTime?           // Phase 6 wires GPS sampling here
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+
+  createdById   String
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  project       Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  operator      Operator            @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  truck         Truck               @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  createdBy     User                @relation(fields: [createdById], references: [id], onDelete: NoAction)
+
+  @@index([scheduledFor])
+  @@index([projectId, scheduledFor])
+  @@index([operatorId, scheduledFor])
+  @@index([truckId])
+  @@index([status])
+  @@index([acceptance])
 }
 
 // Join table for operators ↔ projects (proposal §2.4: "Assign operators and

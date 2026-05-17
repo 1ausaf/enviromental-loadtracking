@@ -17,7 +17,7 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | 2 | User & role management (employee IDs, deactivate/delete, list/search) | ✅ Done |
 | 3 | Truck & driver management (plates, types, status, assignment, photos) | ✅ Done |
 | 4 | Projects & dashboards (budget, progress, assignments, vault) | ✅ Done |
-| 5 | Dispatch system | ⏳ |
+| 5 | Dispatch system (schedule, accept/flag, live status board) | ✅ Done |
 | 6 | GPS & location history | ⏳ |
 | 7 | Digital load ticketing (eTicketing) | ⏳ |
 | 8 | End-of-haul submission & arrival alerts | ⏳ |

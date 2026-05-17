@@ -13,8 +13,9 @@ type NavItem = {
 
 const ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", required: "OPERATOR" },
-  { href: "/operator", label: "Operator", required: "OPERATOR" },
+  { href: "/operator", label: "My dispatches", required: "OPERATOR" },
   { href: "/admin", label: "Admin", required: "ADMIN" },
+  { href: "/admin/dispatch", label: "Dispatch", required: "ADMIN" },
   { href: "/admin/projects", label: "Projects", required: "ADMIN" },
   { href: "/admin/users", label: "Users", required: "ADMIN" },
   { href: "/admin/trucks", label: "Trucks", required: "ADMIN" },

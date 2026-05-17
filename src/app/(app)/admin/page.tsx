@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { listActiveProjectsWithCounts } from "@/lib/projects";
+import { listDispatches } from "@/lib/dispatches";
 import { ProgressBar } from "@/components/ProgressBar";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,19 @@ export default async function AdminPage() {
   await requireUser("ADMIN");
   const projects = await listActiveProjectsWithCounts();
   const totalIssues = projects.reduce((sum, p) => sum + p.issueCount, 0);
+
+  // "Today's dispatches" panel — counts scheduled for the next 24 hours
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const upcoming = await listDispatches({
+    fromDate: now,
+    toDate: tomorrow,
+  });
+  const pendingAccept = upcoming.filter((d) => d.acceptance === "PENDING").length;
+  const flagged = upcoming.filter((d) => d.acceptance === "FLAGGED").length;
+  const inProgress = upcoming.filter(
+    (d) => d.status !== "IDLE" && d.status !== "COMPLETED" && d.status !== "CANCELLED",
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -41,6 +55,28 @@ export default async function AdminPage() {
           sub="Ticket flagging lands in Phase 7."
         />
       </div>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">Today &amp; tomorrow</h2>
+            <p className="text-xs text-zinc-500">
+              {upcoming.length} dispatch{upcoming.length === 1 ? "" : "es"} scheduled in the next 24 hours.
+            </p>
+          </div>
+          <Link
+            href="/admin/dispatch"
+            className="text-sm text-zinc-600 underline hover:text-zinc-900"
+          >
+            Open dispatch board
+          </Link>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <MiniStat label="Pending accept" value={pendingAccept} tone={pendingAccept > 0 ? "warn" : undefined} />
+          <MiniStat label="Flagged" value={flagged} tone={flagged > 0 ? "alert" : undefined} />
+          <MiniStat label="In progress" value={inProgress} />
+        </div>
+      </section>
 
       <section>
         <div className="mb-3 flex items-end justify-between">
@@ -94,7 +130,8 @@ export default async function AdminPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-zinc-900">Admin tools</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <AdminLink href="/admin/dispatch" title="Dispatch" sub="Schedule & track" />
           <AdminLink href="/admin/projects" title="Projects" sub="Create & staff" />
           <AdminLink href="/admin/users" title="Users" sub="Roles & access" />
           <AdminLink href="/admin/trucks" title="Trucks" sub="Plates & status" />
@@ -127,6 +164,25 @@ function StatCard({
         {value}
       </div>
       {sub ? <div className="mt-1 text-xs text-zinc-500">{sub}</div> : null}
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "warn" | "alert";
+}) {
+  const cls =
+    tone === "alert" ? "text-red-700" : tone === "warn" ? "text-amber-700" : "text-zinc-900";
+  return (
+    <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`mt-1 text-xl font-semibold ${cls}`}>{value.toLocaleString()}</div>
     </div>
   );
 }
