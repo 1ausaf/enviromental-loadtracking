@@ -1,7 +1,9 @@
+import { prisma } from "@/lib/db";
+
 // Per-truck and per-operator stats per proposal §2.3.
-// Ticket and Trip models land in Phases 6 and 7 — until then these helpers
-// return zeros so the UI structure is real but the numbers are placeholders.
-// When Phases 6/7 ship, replace the bodies with the actual aggregations.
+// Now backed by real Ticket data (Phase 7). "Loads" = APPROVED tickets;
+// SUBMITTED tickets are still pending admin review so they're not counted
+// toward the official totals.
 
 export type TruckStats = {
   totalLoads: number;
@@ -14,16 +16,68 @@ export type OperatorLoadCounts = {
   perProject: Array<{ projectId: string; projectName: string; count: number }>;
 };
 
-export async function getTruckStats(_truckId: string): Promise<TruckStats> {
-  // Phase 7: count Ticket rows where truckId = _truckId.
-  // Phase 6: sum (trip.endedAt - trip.startedAt) where truckId = _truckId.
-  return { totalLoads: 0, activeHours: 0 };
+export async function getTruckStats(truckId: string): Promise<TruckStats> {
+  const [count, agg] = await Promise.all([
+    prisma.ticket.count({ where: { truckId, status: "APPROVED" } }),
+    prisma.ticket.aggregate({
+      where: { truckId, status: "APPROVED" },
+      _sum: { totalHours: true },
+    }),
+  ]);
+  return {
+    totalLoads: count,
+    activeHours: Math.round((agg._sum.totalHours ?? 0) * 10) / 10,
+  };
 }
 
 export async function getOperatorLoadCounts(
-  _operatorId: string,
+  operatorId: string,
 ): Promise<OperatorLoadCounts> {
-  // Phase 7: count Ticket rows by operator, bucketed by createdAt (today /
-  // current ISO week) and grouped by projectId.
-  return { daily: 0, weekly: 0, perProject: [] };
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  // ISO week starts Monday.
+  const weekStart = new Date(todayStart);
+  const day = weekStart.getDay(); // 0=Sun..6=Sat
+  const diff = (day + 6) % 7; // 0 if Monday
+  weekStart.setDate(weekStart.getDate() - diff);
+
+  const [daily, weekly, perProjectRows] = await Promise.all([
+    prisma.ticket.count({
+      where: { operatorId, status: "APPROVED", date: { gte: todayStart } },
+    }),
+    prisma.ticket.count({
+      where: { operatorId, status: "APPROVED", date: { gte: weekStart } },
+    }),
+    prisma.ticket.groupBy({
+      by: ["projectId"],
+      where: { operatorId, status: "APPROVED", projectId: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const projectIds = perProjectRows
+    .map((r) => r.projectId)
+    .filter((id): id is string => !!id);
+  const projects =
+    projectIds.length === 0
+      ? []
+      : await prisma.project.findMany({
+          where: { id: { in: projectIds } },
+          select: { id: true, name: true },
+        });
+  const nameById = new Map(projects.map((p) => [p.id, p.name]));
+
+  return {
+    daily,
+    weekly,
+    perProject: perProjectRows
+      .filter((r) => r.projectId !== null)
+      .map((r) => ({
+        projectId: r.projectId!,
+        projectName: nameById.get(r.projectId!) ?? "(deleted project)",
+        count: r._count._all,
+      }))
+      .sort((a, b) => b.count - a.count),
+  };
 }

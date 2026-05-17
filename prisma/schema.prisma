@@ -79,6 +79,18 @@ enum DispatchStatus {
   CANCELLED
 }
 
+// Digital load ticket lifecycle per proposal §2.2.
+// DRAFT  — operator is filling it in (deletable)
+// SUBMITTED — signed + locked (never deletable from here on)
+// APPROVED — admin stamp + timestamp
+// FLAGGED  — admin pushed back; Phase 9 routes to Owner exceptions
+enum TicketStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  FLAGGED
+}
+
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -101,6 +113,8 @@ model User {
   operator           Operator?
   uploadedDocuments  ProjectDocument[]
   createdDispatches  Dispatch[]
+  approvedTickets    Ticket[]          @relation("TicketApprovedBy")
+  flaggedTickets     Ticket[]          @relation("TicketFlaggedBy")
 }
 
 // Operator-specific fields, separate from User so only drivers carry phone /
@@ -120,6 +134,7 @@ model Operator {
   projects      OperatorOnProject[]
   dispatches    Dispatch[]
   trips         Trip[]
+  tickets       Ticket[]
 }
 
 model Truck {
@@ -138,6 +153,7 @@ model Truck {
   projects            TruckOnProject[]
   dispatches          Dispatch[]
   trips               Trip[]
+  tickets             Ticket[]
 }
 
 model Project {
@@ -159,6 +175,7 @@ model Project {
   documents       ProjectDocument[]
   dispatches      Dispatch[]
   trips           Trip[]
+  tickets         Ticket[]
 
   @@index([status])
 }
@@ -194,6 +211,7 @@ model Dispatch {
   truck         Truck               @relation(fields: [truckId], references: [id], onDelete: Cascade)
   createdBy     User                @relation(fields: [createdById], references: [id], onDelete: NoAction)
   trip          Trip?
+  ticket        Ticket?
 
   @@index([scheduledFor])
   @@index([projectId, scheduledFor])
@@ -238,6 +256,81 @@ model Trip {
   @@index([projectId, startedAt])
   @@index([truckId, startedAt])
   @@index([startedAt])
+}
+
+// Digital load ticket — mirrors HK's paper ticket layout (proposal §2.2).
+// All field names match the paper form for staff familiarity.
+model Ticket {
+  id                String              @id @default(cuid())
+  ticketNumber      String              @unique  // T-NNNNNN, atomic via SystemCounter
+
+  // Header (mirrors the paper ticket)
+  date              DateTime            // haul date the ticket is FOR
+  brokerName        String?
+  truckNumber       String?             // unit number printed on the truck
+  licensePlate      String?
+  companyHaulingFor String?
+  jobContractNumber String?
+  pickupLocation    String?
+  deliveryLocation  String?
+  equipmentType     TruckType
+  used407ETR        Boolean             @default(false)
+
+  startTime         DateTime?
+  endTime           DateTime?
+  totalHours        Float?              // cached from startTime/endTime at submit
+
+  comments          String?
+
+  // Workflow
+  status            TicketStatus        @default(DRAFT)
+  signatureDataUrl  String?             // base64 PNG of operator's signature
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  approvedById      String?
+  flaggedAt         DateTime?
+  flagReason        String?
+  flaggedById       String?
+
+  // System context — set on create; immutable thereafter.
+  // dispatchId is optional + UNIQUE so a dispatch has at most one ticket;
+  // Phase 8 auto-links these when the operator hits "Complete Load".
+  dispatchId        String?             @unique
+  projectId         String?
+  operatorId        String
+  truckId           String?
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  dispatch          Dispatch?           @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+  project           Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  operator          Operator            @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  truck             Truck?              @relation(fields: [truckId], references: [id], onDelete: SetNull)
+  approvedBy        User?               @relation("TicketApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  flaggedBy         User?               @relation("TicketFlaggedBy",  fields: [flaggedById], references: [id], onDelete: SetNull)
+  loadEntries       TicketLoadEntry[]
+
+  @@index([status, date])
+  @@index([operatorId, date])
+  @@index([projectId, date])
+  @@index([truckId, date])
+  @@index([date])
+}
+
+// Per-load row inside a ticket ("Load 1 at 8:32", "Load 2 at 9:15", ...).
+// Proposal §2.2: "per-load count and times".
+model TicketLoadEntry {
+  id          String   @id @default(cuid())
+  ticketId   String
+  loadNumber Int
+  loadTime   DateTime?
+  notes      String?
+
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, loadNumber])
+  @@index([ticketId])
 }
 
 // Individual GPS sample from the operator's browser. The browser throttles

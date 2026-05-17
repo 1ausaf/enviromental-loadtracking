@@ -16,3 +16,16 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 }
+
+/* Print: drop the app chrome (header/nav/footer) and back-links so the
+   ticket prints as a clean single-document page. Pages that want to be
+   printable mark the chrome elements with `print:hidden` from Tailwind. */
+@media print {
+  body {
+    background: white !important;
+  }
+  main {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+}

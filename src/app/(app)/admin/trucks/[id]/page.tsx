@@ -61,7 +61,7 @@ export default async function TruckDetailPage({
         <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-zinc-900">Stats</h2>
           <p className="mt-1 text-xs text-zinc-500">
-            Phase 7 wires these to live tickets &amp; trips.
+            Total loads = APPROVED tickets · Active hours = sum of ticket totals.
           </p>
           <dl className="mt-4 grid grid-cols-2 gap-4">
             <Stat label="Total loads" value={stats.totalLoads.toLocaleString()} />

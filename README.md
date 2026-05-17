@@ -19,7 +19,7 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | 4 | Projects & dashboards (budget, progress, assignments, vault) | ✅ Done |
 | 5 | Dispatch system (schedule, accept/flag, live status board) | ✅ Done |
 | 6 | GPS & location history (trip recording, map replay, route analytics) | ✅ Done |
-| 7 | Digital load ticketing (eTicketing) | ⏳ |
+| 7 | Digital load ticketing (fillable, sign + submit, approve/flag, print) | ✅ Done |
 | 8 | End-of-haul submission & arrival alerts | ⏳ |
 | 9 | Owner exception approvals | ⏳ |
 | 10 | Reports & exports (PDF / CSV) | ⏳ |

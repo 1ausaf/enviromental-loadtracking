@@ -13,7 +13,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="relative border-b border-zinc-200 bg-white">
+      <header className="relative border-b border-zinc-200 bg-white print:hidden">
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
           <Link href="/dashboard" className="flex items-center gap-2">
             <span className="inline-block h-6 w-6 rounded bg-teal-600" aria-hidden />
@@ -41,9 +41,9 @@ export default async function AppLayout({
         {children}
       </main>
 
-      <footer className="border-t border-zinc-200 bg-white">
+      <footer className="border-t border-zinc-200 bg-white print:hidden">
         <div className="mx-auto max-w-7xl px-4 py-4 text-xs text-zinc-500 sm:px-6 lg:px-8">
-          HK ENV. WEB-APP &middot; Phase 1 — Authentication
+          HK ENV. WEB-APP &middot; Phase 7 — Digital load ticketing
         </div>
       </footer>
     </div>

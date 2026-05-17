@@ -287,19 +287,19 @@ export async function getProjectProgress(
   projectId: string,
   loadTarget?: number,
 ): Promise<ProjectProgress> {
-  // Phase 7: count Ticket rows where projectId = projectId and status='APPROVED'.
-  const target =
-    loadTarget ??
-    (await prisma.project.findUnique({ where: { id: projectId }, select: { loadTarget: true } }))
-      ?.loadTarget ??
-    0;
-  const completed = 0;
+  const [target, completed] = await Promise.all([
+    loadTarget !== undefined
+      ? Promise.resolve(loadTarget)
+      : prisma.project
+          .findUnique({ where: { id: projectId }, select: { loadTarget: true } })
+          .then((p) => p?.loadTarget ?? 0),
+    prisma.ticket.count({ where: { projectId, status: "APPROVED" } }),
+  ]);
   const percent = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0;
   return { completedLoads: completed, loadTarget: target, percent };
 }
 
-export async function getFlaggedIssueCount(_projectId: string): Promise<number> {
-  // Phase 7: Ticket rows with status='FLAGGED'.
-  // Phase 9: routed exceptions awaiting Owner approval.
-  return 0;
+export async function getFlaggedIssueCount(projectId: string): Promise<number> {
+  // Phase 9 will add routed Owner exceptions to this count too.
+  return prisma.ticket.count({ where: { projectId, status: "FLAGGED" } });
 }

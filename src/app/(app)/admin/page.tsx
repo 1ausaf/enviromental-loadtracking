@@ -49,10 +49,10 @@ export default async function AdminPage() {
           sub={`of ${projects.reduce((s, p) => s + p.loadTarget, 0).toLocaleString()} target`}
         />
         <StatCard
-          title="Flagged issues"
+          title="Flagged tickets"
           value={totalIssues.toLocaleString()}
           tone={totalIssues > 0 ? "warn" : "ok"}
-          sub="Ticket flagging lands in Phase 7."
+          sub="Across active projects."
         />
       </div>
 
@@ -130,7 +130,8 @@ export default async function AdminPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-zinc-900">Admin tools</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+          <AdminLink href="/admin/tickets" title="Tickets" sub="Approve & flag" />
           <AdminLink href="/admin/dispatch" title="Dispatch" sub="Schedule & track" />
           <AdminLink href="/admin/gps" title="GPS" sub="Routes & replay" />
           <AdminLink href="/admin/projects" title="Projects" sub="Create & staff" />
