@@ -58,6 +58,8 @@ export default async function AdminTicketPage({
           endTime: ticket.endTime?.toISOString() ?? null,
           totalHours: ticket.totalHours,
           comments: ticket.comments,
+          materialType: ticket.materialType,
+          issuesNote: ticket.issuesNote,
           signatureDataUrl: ticket.signatureDataUrl,
           submittedAt: ticket.submittedAt?.toISOString() ?? null,
           approvedAt: ticket.approvedAt?.toISOString() ?? null,
@@ -74,6 +76,12 @@ export default async function AdminTicketPage({
             loadTime: e.loadTime?.toISOString() ?? null,
             notes: e.notes,
           })),
+          photos: ticket.photos.map((p) => ({
+            id: p.id,
+            filename: p.filename,
+            originalName: p.originalName,
+          })),
+          ticketId: ticket.id,
         }}
       />
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { DispatchAcceptance, DispatchStatus } from "@/generated/prisma/client";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
 import { GpsTracker } from "@/components/GpsTracker";
@@ -10,6 +11,7 @@ import {
   flagDispatchAction,
   startDispatchAction,
 } from "./actions";
+import { completeLoadAction } from "./tickets/actions";
 
 type CardData = {
   id: string;
@@ -39,13 +41,15 @@ const fullDtFmt = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
 });
 
+// EN_ROUTE_TO_DUMP gets its own button in JSX — the "Complete Load" path
+// of proposal §2.7 advances the dispatch AND opens the pre-filled ticket.
 const ADVANCE_LABEL: Partial<Record<DispatchStatus, string>> = {
   EN_ROUTE_TO_PICKUP: "Arrived at pickup",
   LOADING: "Loaded, en route to dump",
-  EN_ROUTE_TO_DUMP: "Arrived at dump — complete",
 };
 
 export function OperatorDispatchCard({ data }: { data: CardData }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [flagging, setFlagging] = useState(false);
   const [reason, setReason] = useState("");
@@ -56,6 +60,15 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
     start(async () => {
       const res = await fn();
       if (res.error) setError(res.error);
+    });
+  }
+
+  function completeLoad() {
+    setError(null);
+    start(async () => {
+      const res = await completeLoadAction(data.id);
+      if (res.error) setError(res.error);
+      else if (res.ticketId) router.push(`/operator/tickets/${res.ticketId}`);
     });
   }
 
@@ -147,9 +160,20 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
           </button>
         ) : null}
 
+        {data.status === "EN_ROUTE_TO_DUMP" ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={completeLoad}
+            className="inline-flex h-11 items-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+          >
+            {pending ? "Opening ticket…" : "Complete Load"}
+          </button>
+        ) : null}
+
         {data.status === "COMPLETED" ? (
           <span className="self-center text-xs text-emerald-700">
-            Completed — eTicket flow lands in Phase 8.
+            Completed — finish the ticket in My tickets.
           </span>
         ) : null}
       </div>

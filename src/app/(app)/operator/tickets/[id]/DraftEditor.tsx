@@ -10,10 +10,18 @@ import {
   signAndSubmitAction,
   type EditTicketState,
 } from "../actions";
+import { TicketPhotos } from "./TicketPhotos";
 
 const INITIAL: EditTicketState = { status: "idle" };
 
 type LoadRow = { loadNumber: number; loadTime: string; notes: string };
+
+type PhotoEntry = {
+  id: string;
+  filename: string;
+  originalName: string;
+  byteSize: number;
+};
 
 type Initial = {
   date: string;
@@ -29,7 +37,10 @@ type Initial = {
   startTime: string;
   endTime: string;
   comments: string;
+  materialType: string;
+  issuesNote: string;
   loadEntries: LoadRow[];
+  photos: PhotoEntry[];
 };
 
 export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
@@ -195,13 +206,36 @@ export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
           </button>
         </Section>
 
+        <Section title="End of haul">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input
+              id="materialType"
+              label="Material type"
+              defaultValue={initial.materialType}
+            />
+            <div className="sm:col-span-2">
+              <label htmlFor="issuesNote" className="mb-1 block text-sm font-medium text-zinc-900">
+                Issues
+              </label>
+              <textarea
+                id="issuesNote"
+                name="issuesNote"
+                rows={2}
+                defaultValue={initial.issuesNote}
+                placeholder="Anything that went wrong on the haul — leave empty if all good."
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+              />
+            </div>
+          </div>
+        </Section>
+
         <Section title="Comments">
           <textarea
             id="comments"
             name="comments"
             rows={3}
             defaultValue={initial.comments}
-            placeholder="Anything the admin should know."
+            placeholder="Anything else the admin should know."
             className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
           />
         </Section>
@@ -235,6 +269,16 @@ export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
           </button>
         </div>
       </form>
+
+      <Section title="Photos (optional)">
+        <p className="text-xs text-zinc-500">
+          Photos are saved as you upload. They&apos;re permanently attached to
+          the ticket once you submit.
+        </p>
+        <div className="mt-3">
+          <TicketPhotos ticketId={id} initial={initial.photos} />
+        </div>
+      </Section>
 
       <Section title="Sign & submit">
         <p className="text-xs text-zinc-500">

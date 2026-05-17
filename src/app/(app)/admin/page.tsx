@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/session";
 import { listActiveProjectsWithCounts } from "@/lib/projects";
 import { listDispatches } from "@/lib/dispatches";
 import { ProgressBar } from "@/components/ProgressBar";
+import { ArrivalAlerts } from "@/components/ArrivalAlerts";
+import { AutoRefresh } from "@/components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +34,19 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
-          Master dashboard
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Active projects, progress, and flagged issues across the operation.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+            Master dashboard
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            Active projects, progress, and flagged issues across the operation.
+          </p>
+        </div>
+        <AutoRefresh intervalMs={10000} label="Refreshing" />
       </div>
+
+      <ArrivalAlerts />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard title="Active projects" value={projects.length.toLocaleString()} />

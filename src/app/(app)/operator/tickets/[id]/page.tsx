@@ -63,10 +63,18 @@ export default async function OperatorTicketPage({
             startTime: ticket.startTime ? toLocalDtInput(ticket.startTime) : "",
             endTime: ticket.endTime ? toLocalDtInput(ticket.endTime) : "",
             comments: ticket.comments ?? "",
+            materialType: ticket.materialType ?? "",
+            issuesNote: ticket.issuesNote ?? "",
             loadEntries: ticket.loadEntries.map((e) => ({
               loadNumber: e.loadNumber,
               loadTime: e.loadTime ? toLocalDtInput(e.loadTime) : "",
               notes: e.notes ?? "",
+            })),
+            photos: ticket.photos.map((p) => ({
+              id: p.id,
+              filename: p.filename,
+              originalName: p.originalName,
+              byteSize: p.byteSize,
             })),
           }}
         />
@@ -101,6 +109,8 @@ function ticketToView(t: any) {
     endTime: t.endTime?.toISOString() ?? null,
     totalHours: t.totalHours,
     comments: t.comments,
+    materialType: t.materialType ?? null,
+    issuesNote: t.issuesNote ?? null,
     signatureDataUrl: t.signatureDataUrl,
     submittedAt: t.submittedAt?.toISOString() ?? null,
     approvedAt: t.approvedAt?.toISOString() ?? null,
@@ -117,5 +127,11 @@ function ticketToView(t: any) {
       loadTime: e.loadTime?.toISOString() ?? null,
       notes: e.notes,
     })),
+    photos: t.photos.map((p: { id: string; filename: string; originalName: string }) => ({
+      id: p.id,
+      filename: p.filename,
+      originalName: p.originalName,
+    })),
+    ticketId: t.id,
   };
 }

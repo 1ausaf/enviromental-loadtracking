@@ -19,6 +19,8 @@ export type TicketViewModel = {
   endTime: string | null;
   totalHours: number | null;
   comments: string | null;
+  materialType: string | null;
+  issuesNote: string | null;
   signatureDataUrl: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
@@ -31,6 +33,8 @@ export type TicketViewModel = {
   projectName: string | null;
   projectClient: string | null;
   loadEntries: Array<{ loadNumber: number; loadTime: string | null; notes: string | null }>;
+  photos: Array<{ id: string; filename: string; originalName: string }>;
+  ticketId: string;
 };
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
@@ -103,6 +107,7 @@ export function TicketView({
               : null
           }
         />
+        <Field label="Material type" value={ticket.materialType} />
       </dl>
 
       {/* Time block */}
@@ -147,6 +152,37 @@ export function TicketView({
           </table>
         )}
       </section>
+
+      {ticket.issuesNote ? (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-800">
+            Issues reported
+          </h2>
+          <p className="mt-1 whitespace-pre-wrap rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            {ticket.issuesNote}
+          </p>
+        </section>
+      ) : null}
+
+      {ticket.photos.length > 0 ? (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-700">
+            Photos ({ticket.photos.length})
+          </h2>
+          <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 print:grid-cols-3">
+            {ticket.photos.map((p) => (
+              <li key={p.id}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/uploads/tickets/${ticket.ticketId}/${p.filename}`}
+                  alt={p.originalName}
+                  className="aspect-square w-full rounded-md object-cover ring-1 ring-zinc-200 print:break-inside-avoid"
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {ticket.comments ? (
         <section className="mt-6">

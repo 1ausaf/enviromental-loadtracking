@@ -280,6 +280,10 @@ model Ticket {
   endTime           DateTime?
   totalHours        Float?              // cached from startTime/endTime at submit
 
+  // End-of-haul fields per proposal §2.7 (added Phase 8)
+  materialType      String?             // e.g. "Topsoil", "Crushed stone 19mm"
+  issuesNote        String?             // operator-reported issues at the dump
+
   comments          String?
 
   // Workflow
@@ -310,6 +314,7 @@ model Ticket {
   approvedBy        User?               @relation("TicketApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   flaggedBy         User?               @relation("TicketFlaggedBy",  fields: [flaggedById], references: [id], onDelete: SetNull)
   loadEntries       TicketLoadEntry[]
+  photos            TicketPhoto[]
 
   @@index([status, date])
   @@index([operatorId, date])
@@ -331,6 +336,23 @@ model TicketLoadEntry {
 
   @@unique([ticketId, loadNumber])
   @@index([ticketId])
+}
+
+// Optional photos attached to an end-of-haul ticket (proposal §2.7).
+// Stored under public/uploads/tickets/{ticketId}/{filename}; can only be
+// added while DRAFT — once submitted the photo set is frozen with the ticket.
+model TicketPhoto {
+  id           String   @id @default(cuid())
+  ticketId     String
+  filename     String
+  originalName String
+  mimeType     String
+  byteSize     Int
+  uploadedAt   DateTime @default(now())
+
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, uploadedAt])
 }
 
 // Individual GPS sample from the operator's browser. The browser throttles

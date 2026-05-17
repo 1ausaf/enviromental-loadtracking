@@ -1,3 +1,6 @@
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { Prisma, TicketStatus, TruckType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 
@@ -52,6 +55,8 @@ export type DraftPatch = Partial<{
   startTime: Date | null;
   endTime: Date | null;
   comments: string | null;
+  materialType: string | null;       // Phase 8
+  issuesNote: string | null;         // Phase 8
   projectId: string | null;
   truckId: string | null;
 }>;
@@ -155,6 +160,8 @@ export async function updateDraft(
   if (patch.startTime !== undefined) data.startTime = patch.startTime;
   if (patch.endTime !== undefined) data.endTime = patch.endTime;
   if (patch.comments !== undefined) data.comments = patch.comments?.trim() || null;
+  if (patch.materialType !== undefined) data.materialType = patch.materialType?.trim() || null;
+  if (patch.issuesNote !== undefined) data.issuesNote = patch.issuesNote?.trim() || null;
   if (patch.projectId !== undefined) {
     data.project = patch.projectId ? { connect: { id: patch.projectId } } : { disconnect: true };
   }
@@ -192,6 +199,23 @@ export async function replaceLoadEntries(
       })),
     }),
   ]);
+}
+
+// Phase 8: the "Complete Load" path. Idempotent — if the operator taps
+// Complete Load twice (or returns later via the URL), they land on the
+// existing draft rather than creating a duplicate.
+export async function findOrCreateDraftForDispatch(
+  operatorId: string,
+  dispatchId: string,
+) {
+  const existing = await prisma.ticket.findUnique({ where: { dispatchId } });
+  if (existing) {
+    if (existing.operatorId !== operatorId) {
+      throw new TicketError("FORBIDDEN", "That dispatch isn't yours.");
+    }
+    return existing;
+  }
+  return createDraft(operatorId, { dispatchId });
 }
 
 // Drafts are deletable by their owning operator. Once SUBMITTED, the
@@ -351,12 +375,77 @@ export async function getTicket(id: string) {
     include: {
       ...ticketInclude,
       loadEntries: { orderBy: { loadNumber: "asc" } },
+      photos: { orderBy: { uploadedAt: "asc" } },
       approvedBy: { select: { id: true, name: true, email: true } },
       flaggedBy: { select: { id: true, name: true, email: true } },
     },
   });
   if (!t) throw new TicketError("NOT_FOUND", "Ticket not found.");
   return t;
+}
+
+// --- Photo upload (Phase 8) ---------------------------------------------
+
+const PHOTO_DIR = (ticketId: string) =>
+  path.join(process.cwd(), "public", "uploads", "tickets", ticketId);
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export async function addTicketPhoto(
+  operatorId: string,
+  ticketId: string,
+  buf: Buffer,
+  originalName: string,
+  mimeType: string,
+) {
+  await loadOwnDraft(operatorId, ticketId);
+
+  const ext = ALLOWED_PHOTO_MIME[mimeType.toLowerCase()];
+  if (!ext) {
+    throw new TicketError("BAD_REQUEST", "Photo must be a JPEG, PNG, or WebP image.");
+  }
+  if (buf.byteLength > PHOTO_MAX_BYTES) {
+    throw new TicketError("BAD_REQUEST", "Photo must be 5 MB or smaller.");
+  }
+
+  await fs.mkdir(PHOTO_DIR(ticketId), { recursive: true });
+  const id = `c${crypto.randomBytes(12).toString("hex")}`;
+  const filename = `${id}.${ext}`;
+  await fs.writeFile(path.join(PHOTO_DIR(ticketId), filename), buf);
+
+  return prisma.ticketPhoto.create({
+    data: {
+      id,
+      ticketId,
+      filename,
+      originalName: originalName.slice(0, 200),
+      mimeType,
+      byteSize: buf.byteLength,
+    },
+  });
+}
+
+export async function deleteTicketPhoto(
+  operatorId: string,
+  ticketId: string,
+  photoId: string,
+): Promise<void> {
+  await loadOwnDraft(operatorId, ticketId);
+  const photo = await prisma.ticketPhoto.findUnique({ where: { id: photoId } });
+  if (!photo || photo.ticketId !== ticketId) {
+    throw new TicketError("NOT_FOUND", "Photo not found.");
+  }
+  await fs.rm(path.join(PHOTO_DIR(ticketId), photo.filename), { force: true });
+  await prisma.ticketPhoto.delete({ where: { id: photoId } });
+}
+
+export function ticketPhotoPublicUrl(ticketId: string, filename: string): string {
+  return `/uploads/tickets/${ticketId}/${filename}`;
 }
 
 export const ticketInclude = {

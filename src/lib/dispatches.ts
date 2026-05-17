@@ -318,6 +318,29 @@ export async function listDispatchesForOperator(operatorId: string) {
   });
 }
 
+// Phase 8 arrival alerts: dispatches where the operator marked Complete Load
+// (status → COMPLETED, completedAt set) but the ticket isn't yet SUBMITTED.
+// Admin dashboard shows these with a live countdown so admins can chase the
+// operator to finish the eTicket promptly.
+export async function listPendingArrivals() {
+  return prisma.dispatch.findMany({
+    where: {
+      status: "COMPLETED",
+      completedAt: { not: null },
+      OR: [
+        { ticket: null },
+        { ticket: { status: "DRAFT" } },
+      ],
+    },
+    orderBy: { completedAt: "asc" },
+    include: {
+      ...dispatchInclude,
+      ticket: { select: { id: true, status: true } },
+    },
+    take: 50,
+  });
+}
+
 export async function getDispatch(id: string) {
   const d = await prisma.dispatch.findUnique({
     where: { id },

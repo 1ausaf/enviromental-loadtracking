@@ -5,9 +5,12 @@ import { redirect } from "next/navigation";
 import type { TruckType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
+import { advanceDispatch, DispatchError } from "@/lib/dispatches";
 import {
   createDraft,
   deleteDraft,
+  deleteTicketPhoto,
+  findOrCreateDraftForDispatch,
   replaceLoadEntries,
   signAndSubmit,
   TicketError,
@@ -92,6 +95,8 @@ export async function saveDraftAction(
       startTime: parseDate(formData.get("startTime")),
       endTime: parseDate(formData.get("endTime")),
       comments: String(formData.get("comments") ?? "") || null,
+      materialType: String(formData.get("materialType") ?? "") || null,
+      issuesNote: String(formData.get("issuesNote") ?? "") || null,
     };
     await updateDraft(opId, ticketId, patch);
 
@@ -145,4 +150,62 @@ export async function deleteDraftAction(ticketId: string): Promise<{ error?: str
   }
   revalidatePath("/operator/tickets");
   redirect("/operator/tickets");
+}
+
+// Phase 8 — "Complete Load" path. Atomically advances the dispatch through
+// to COMPLETED and creates (or finds) the pre-filled ticket draft, returning
+// its id so the client can redirect into the ticket form. Idempotent: if the
+// operator taps the button twice or returns later, they land on the same
+// draft rather than spawning duplicates.
+export async function completeLoadAction(
+  dispatchId: string,
+): Promise<{ ticketId?: string; error?: string }> {
+  try {
+    const opId = await operatorId();
+    const d = await prisma.dispatch.findUnique({ where: { id: dispatchId } });
+    if (!d || d.operatorId !== opId) {
+      return { error: "Dispatch not found." };
+    }
+    // Advance to COMPLETED if not already (idempotent at the dispatch lib
+    // level too: re-tapping after a previous Complete is harmless).
+    if (d.status !== "COMPLETED") {
+      try {
+        // The state machine forwards EN_ROUTE_TO_DUMP → COMPLETED;
+        // earlier states get a clearer error than the generic FORWARD lookup.
+        if (d.status !== "EN_ROUTE_TO_DUMP") {
+          return {
+            error: "You can only Complete Load once you're en route to the dump.",
+          };
+        }
+        await advanceDispatch(opId, dispatchId);
+      } catch (e) {
+        if (e instanceof DispatchError) return { error: e.message };
+        return { error: "Couldn't advance the dispatch." };
+      }
+    }
+    const draft = await findOrCreateDraftForDispatch(opId, dispatchId);
+    revalidatePath("/operator");
+    revalidatePath("/operator/tickets");
+    revalidatePath("/admin");
+    revalidatePath("/admin/dispatch");
+    return { ticketId: draft.id };
+  } catch (e) {
+    if (e instanceof TicketError) return { error: e.message };
+    return { error: "Complete Load failed." };
+  }
+}
+
+export async function deleteTicketPhotoAction(
+  ticketId: string,
+  photoId: string,
+): Promise<{ error?: string }> {
+  try {
+    const opId = await operatorId();
+    await deleteTicketPhoto(opId, ticketId, photoId);
+  } catch (e) {
+    if (e instanceof TicketError) return { error: e.message };
+    return { error: "Delete failed." };
+  }
+  revalidatePath(`/operator/tickets/${ticketId}`);
+  return {};
 }
