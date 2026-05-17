@@ -53,6 +53,12 @@ enum LicenceClass {
   G
 }
 
+// Project lifecycle per proposal §2.4. Master dashboard shows ACTIVE.
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+}
+
 model User {
   id              String   @id @default(cuid())
   email           String   @unique
@@ -69,10 +75,11 @@ model User {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  sessions        Session[]
-  sessionEvents   SessionEvent[]
-  passwordResets  PasswordReset[]
-  operator        Operator?
+  sessions          Session[]
+  sessionEvents     SessionEvent[]
+  passwordResets    PasswordReset[]
+  operator          Operator?
+  uploadedDocuments ProjectDocument[]
 }
 
 // Operator-specific fields, separate from User so only drivers carry phone /
@@ -89,6 +96,7 @@ model Operator {
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   currentTruck  Truck?        @relation("CurrentAssignment")
   assignments   TruckAssignmentEvent[]
+  projects      OperatorOnProject[]
 }
 
 model Truck {
@@ -104,11 +112,78 @@ model Truck {
 
   assignedOperator    Operator?    @relation("CurrentAssignment", fields: [assignedOperatorId], references: [id])
   assignments         TruckAssignmentEvent[]
+  projects            TruckOnProject[]
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  name            String
+  client          String
+  address         String
+  startDate       DateTime
+  endDate         DateTime?
+  materialBudget  Float         // currency (CAD); unit-agnostic per proposal §2.4
+  loadTarget      Int           // number of loads to complete
+  scheduleNotes   String?       // free-text shift / schedule notes
+  status          ProjectStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  operators       OperatorOnProject[]
+  trucks          TruckOnProject[]
+  documents       ProjectDocument[]
+
+  @@index([status])
+}
+
+// Join table for operators ↔ projects (proposal §2.4: "Assign operators and
+// trucks to each project"). When removed, the row is hard-deleted; project
+// load counts grouped by operator come from Ticket rows in Phase 7.
+model OperatorOnProject {
+  projectId   String
+  operatorId  String
+  assignedAt  DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  operator    Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, operatorId])
+  @@index([operatorId])
+}
+
+model TruckOnProject {
+  projectId   String
+  truckId     String
+  assignedAt  DateTime @default(now())
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  truck       Truck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, truckId])
+  @@index([truckId])
+}
+
+// Document vault per proposal §2.4. File lives under
+// public/uploads/projects/{projectId}/{filename}; row holds the metadata
+// for listing and download.
+model ProjectDocument {
+  id           String   @id @default(cuid())
+  projectId    String
+  filename     String   // stored filename on disk (cuid + ext)
+  originalName String   // what the user uploaded
+  mimeType     String
+  byteSize     Int
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: NoAction)
+
+  @@index([projectId, uploadedAt])
 }
 
 // Audit trail for assignment changes. The current row (releasedAt=null) for
 // any given truck mirrors Truck.assignedOperatorId; the rest is history.
-// projectId added in Phase 4 — for now assignments are global.
 model TruckAssignmentEvent {
   id          String   @id @default(cuid())
   truckId     String
