@@ -79,6 +79,20 @@ enum DispatchStatus {
   CANCELLED
 }
 
+// Owner exception lifecycle per proposal §2.8.
+// Auto-raised by the system or admin; resolved by an Owner only.
+enum ExceptionStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+enum ExceptionType {
+  TICKET_LATE_SUBMISSION   // submitted after the late-submission threshold
+  TICKET_FLAGGED           // admin flagged a ticket
+  ADMIN_OVERRIDE_REQUEST   // admin requests Owner sign-off explicitly
+}
+
 // Digital load ticket lifecycle per proposal §2.2.
 // DRAFT  — operator is filling it in (deletable)
 // SUBMITTED — signed + locked (never deletable from here on)
@@ -115,6 +129,8 @@ model User {
   createdDispatches  Dispatch[]
   approvedTickets    Ticket[]          @relation("TicketApprovedBy")
   flaggedTickets     Ticket[]          @relation("TicketFlaggedBy")
+  raisedExceptions   Exception[]       @relation("ExceptionCreatedBy")
+  decidedExceptions  Exception[]       @relation("ExceptionDecidedBy")
 }
 
 // Operator-specific fields, separate from User so only drivers carry phone /
@@ -212,6 +228,7 @@ model Dispatch {
   createdBy     User                @relation(fields: [createdById], references: [id], onDelete: NoAction)
   trip          Trip?
   ticket        Ticket?
+  exceptions    Exception[]
 
   @@index([scheduledFor])
   @@index([projectId, scheduledFor])
@@ -315,6 +332,7 @@ model Ticket {
   flaggedBy         User?               @relation("TicketFlaggedBy",  fields: [flaggedById], references: [id], onDelete: SetNull)
   loadEntries       TicketLoadEntry[]
   photos            TicketPhoto[]
+  exceptions        Exception[]
 
   @@index([status, date])
   @@index([operatorId, date])
@@ -336,6 +354,43 @@ model TicketLoadEntry {
 
   @@unique([ticketId, loadNumber])
   @@index([ticketId])
+}
+
+// Owner exception per proposal §2.8 — anything that needs Owner sign-off.
+// `summary` is a human-readable one-liner shown in the queue; `details`
+// holds the longer explanation. The decision side stays null until an
+// Owner approves or declines, at which point decidedAt / decidedById /
+// decisionNote are set. History is never deleted (accountability).
+model Exception {
+  id            String          @id @default(cuid())
+  type          ExceptionType
+  status        ExceptionStatus @default(PENDING)
+
+  summary       String
+  details       String?
+
+  // Loose linkage to the entity that triggered this (mostly Ticket today,
+  // could expand to Dispatch / Project later). SetNull on parent delete so
+  // the audit trail outlives the underlying record.
+  ticketId      String?
+  dispatchId    String?
+
+  createdById   String?         // null = system-raised
+  createdAt     DateTime        @default(now())
+
+  decidedAt     DateTime?
+  decidedById   String?
+  decisionNote  String?
+
+  ticket        Ticket?         @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  dispatch      Dispatch?       @relation(fields: [dispatchId], references: [id], onDelete: SetNull)
+  createdBy     User?           @relation("ExceptionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  decidedBy     User?           @relation("ExceptionDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@index([ticketId])
+  @@index([dispatchId])
 }
 
 // Optional photos attached to an end-of-haul ticket (proposal §2.7).

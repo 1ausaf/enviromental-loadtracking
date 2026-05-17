@@ -21,7 +21,7 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | 6 | GPS & location history (trip recording, map replay, route analytics) | ✅ Done |
 | 7 | Digital load ticketing (fillable, sign + submit, approve/flag, print) | ✅ Done |
 | 8 | End-of-haul submission & arrival alerts (Complete Load, photos, live timer) | ✅ Done |
-| 9 | Owner exception approvals | ⏳ |
+| 9 | Owner exception approvals (auto-raise on flag/late/override, decision audit) | ✅ Done |
 | 10 | Reports & exports (PDF / CSV) | ⏳ |
 | 11 | QA, seed data, polish, demo prep | ⏳ |
 

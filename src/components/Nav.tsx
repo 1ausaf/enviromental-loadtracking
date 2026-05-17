@@ -23,7 +23,7 @@ const ITEMS: NavItem[] = [
   { href: "/admin/users", label: "Users", required: "ADMIN" },
   { href: "/admin/trucks", label: "Trucks", required: "ADMIN" },
   { href: "/admin/operators", label: "Drivers", required: "ADMIN" },
-  { href: "/owner", label: "Owner", required: "OWNER" },
+  { href: "/owner", label: "Exceptions", required: "ADMIN" },
 ];
 
 export function Nav({ role }: { role: Role }) {

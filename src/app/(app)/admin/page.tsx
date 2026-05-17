@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import { listActiveProjectsWithCounts } from "@/lib/projects";
 import { listDispatches } from "@/lib/dispatches";
+import { countPendingExceptions } from "@/lib/exceptions";
 import { ProgressBar } from "@/components/ProgressBar";
 import { ArrivalAlerts } from "@/components/ArrivalAlerts";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -22,10 +23,10 @@ export default async function AdminPage() {
   // "Today's dispatches" panel — counts scheduled for the next 24 hours
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const upcoming = await listDispatches({
-    fromDate: now,
-    toDate: tomorrow,
-  });
+  const [upcoming, pendingExceptions] = await Promise.all([
+    listDispatches({ fromDate: now, toDate: tomorrow }),
+    countPendingExceptions(),
+  ]);
   const pendingAccept = upcoming.filter((d) => d.acceptance === "PENDING").length;
   const flagged = upcoming.filter((d) => d.acceptance === "FLAGGED").length;
   const inProgress = upcoming.filter(
@@ -48,7 +49,7 @@ export default async function AdminPage() {
 
       <ArrivalAlerts />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Active projects" value={projects.length.toLocaleString()} />
         <StatCard
           title="Loads completed"
@@ -61,6 +62,14 @@ export default async function AdminPage() {
           tone={totalIssues > 0 ? "warn" : "ok"}
           sub="Across active projects."
         />
+        <Link href="/owner" className="block">
+          <StatCard
+            title="Owner queue"
+            value={pendingExceptions.toLocaleString()}
+            tone={pendingExceptions > 0 ? "warn" : "ok"}
+            sub={pendingExceptions === 0 ? "No pending exceptions." : "Awaiting Owner sign-off."}
+          />
+        </Link>
       </div>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">

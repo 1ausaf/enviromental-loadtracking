@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Prisma, TicketStatus, TruckType } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  autoResolvePendingForApprovedTicket,
+  LATE_SUBMISSION_THRESHOLD_MS,
+  raiseException,
+} from "@/lib/exceptions";
 
 export class TicketError extends Error {
   constructor(
@@ -255,15 +260,34 @@ export async function signAndSubmit(
   }
 
   const totalHours = computeTotalHours(t.startTime, t.endTime);
+  const submittedAt = new Date();
+  const lateBy = submittedAt.getTime() - t.date.getTime();
 
-  await prisma.ticket.update({
-    where: { id: ticketId },
-    data: {
-      status: "SUBMITTED",
-      signatureDataUrl,
-      submittedAt: new Date(),
-      totalHours,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: "SUBMITTED",
+        signatureDataUrl,
+        submittedAt,
+        totalHours,
+      },
+    });
+
+    // Auto-raise Owner exception when submitted past the configured window
+    // (proposal §2.8 — "tickets submitted outside the expected window").
+    if (lateBy > LATE_SUBMISSION_THRESHOLD_MS) {
+      const hours = Math.round(lateBy / (60 * 60 * 1000));
+      await raiseException(tx, {
+        type: "TICKET_LATE_SUBMISSION",
+        summary: `Ticket ${t.ticketNumber} submitted ${hours}h after haul date`,
+        details:
+          `Haul date: ${t.date.toISOString()}\n` +
+          `Submitted: ${submittedAt.toISOString()}\n` +
+          `Threshold: ${Math.round(LATE_SUBMISSION_THRESHOLD_MS / 3_600_000)}h`,
+        ticketId,
+      });
+    }
   });
 }
 
@@ -276,16 +300,25 @@ export async function approveTicket(actorUserId: string, ticketId: string): Prom
   if (t.status === "DRAFT") {
     throw new TicketError("INVALID_STATE", "Operator hasn't submitted the ticket yet.");
   }
-  await prisma.ticket.update({
-    where: { id: ticketId },
-    data: {
-      status: "APPROVED",
-      approvedAt: new Date(),
-      approvedById: actorUserId,
-      flagReason: null,
-      flaggedAt: null,
-      flaggedById: null,
-    },
+  const wasFlagged = t.status === "FLAGGED";
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+        approvedById: actorUserId,
+        flagReason: null,
+        flaggedAt: null,
+        flaggedById: null,
+      },
+    });
+    // If admin themselves overrode their flag, any PENDING TICKET_FLAGGED
+    // exception for this ticket is now stale — auto-resolve so the Owner
+    // queue stays clean (proposal §2.8 accountability).
+    if (wasFlagged) {
+      await autoResolvePendingForApprovedTicket(tx, ticketId);
+    }
   });
 }
 
@@ -303,16 +336,34 @@ export async function flagTicket(
   if (t.status === "DRAFT") {
     throw new TicketError("INVALID_STATE", "Can't flag an unsubmitted draft.");
   }
-  await prisma.ticket.update({
-    where: { id: ticketId },
-    data: {
-      status: "FLAGGED",
-      flagReason: trimmed.slice(0, 500),
-      flaggedAt: new Date(),
-      flaggedById: actorUserId,
-      approvedAt: null,
-      approvedById: null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.ticket.update({
+      where: { id: ticketId },
+      data: {
+        status: "FLAGGED",
+        flagReason: trimmed.slice(0, 500),
+        flaggedAt: new Date(),
+        flaggedById: actorUserId,
+        approvedAt: null,
+        approvedById: null,
+      },
+    });
+    // Dedupe: only raise a new TICKET_FLAGGED Exception if there isn't
+    // already a PENDING one for this ticket (admin re-flagging the same
+    // ticket shouldn't spam the Owner's queue).
+    const existing = await tx.exception.findFirst({
+      where: { ticketId, type: "TICKET_FLAGGED", status: "PENDING" },
+      select: { id: true },
+    });
+    if (!existing) {
+      await raiseException(tx, {
+        type: "TICKET_FLAGGED",
+        summary: `Ticket ${t.ticketNumber} flagged by admin`,
+        details: trimmed,
+        ticketId,
+        createdById: actorUserId,
+      });
+    }
   });
 }
 
