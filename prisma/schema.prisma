@@ -23,15 +23,85 @@ enum Role {
   OPERATOR
 }
 
-// Minimal Phase 0 model. Fleshed out in Phase 1 (auth, 2FA secret, password hash)
-// and Phase 2 (employeeId enforcement, deactivation workflow, audit fields).
+enum SessionEventType {
+  LOGIN
+  LOGOUT
+}
+
 model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  role            Role     @default(OPERATOR)
+  employeeId      String?  @unique
+  isActive        Boolean  @default(true)
+
+  // Auth (Phase 1)
+  passwordHash    String
+  totpSecret      String?
+  totpEnabled     Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions        Session[]
+  sessionEvents   SessionEvent[]
+  passwordResets  PasswordReset[]
+}
+
+// One row per active or revoked session. Cookie carries a random token; we
+// store SHA-256(token) so a DB leak does not yield live session tokens.
+model Session {
+  id           String         @id @default(cuid())
+  userId       String
+  tokenHash    String         @unique
+  userAgent    String?
+  ipAddress    String?
+  createdAt    DateTime       @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events       SessionEvent[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Login/logout audit with browser-captured location per proposal Section 2.1.
+// locationError is set when the browser denied or failed geolocation.
+model SessionEvent {
+  id              String           @id @default(cuid())
+  userId          String
+  sessionId       String?
+  type            SessionEventType
+  occurredAt      DateTime         @default(now())
+
+  latitude        Float?
+  longitude       Float?
+  accuracyMeters  Float?
+  locationError   String?
+
+  ipAddress       String?
+  userAgent       String?
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         Session?         @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, occurredAt])
+  @@index([sessionId])
+}
+
+// Short-lived password reset tokens. tokenHash = SHA-256(rawToken).
+model PasswordReset {
   id         String   @id @default(cuid())
-  email      String   @unique
-  name       String
-  role       Role     @default(OPERATOR)
-  employeeId String?  @unique
-  isActive   Boolean  @default(true)
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

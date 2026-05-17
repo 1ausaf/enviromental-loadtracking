@@ -1,21 +1,29 @@
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
-// PHASE 0 STUB.
-// Prisma 7 requires either a runtime `adapter` (e.g. @prisma/adapter-pg) or
-// `accelerateUrl` to construct the client. No database queries run in Phase 0,
-// so we don't instantiate one yet. Phase 1 replaces the body of getPrisma()
-// with the real singleton wired to the chosen adapter — every other file
-// already imports through this module so no call sites need to change.
+// Singleton — avoids hot-reload connection thrash in dev.
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
 
-export type { PrismaClient };
+function buildClient(): PrismaClient {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL is not set. Copy .env.example to .env.local and set the " +
+        "Postgres connection string.",
+    );
+  }
+  const adapter = new PrismaPg({ connectionString: url });
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  });
+}
 
-let _client: PrismaClient | null = null;
+export const prisma: PrismaClient =
+  globalForPrisma.prisma ?? buildClient();
 
-export function getPrisma(): PrismaClient {
-  if (_client) return _client;
-  throw new Error(
-    "Database access is not wired yet. Phase 1 will instantiate PrismaClient " +
-      "with a runtime adapter (e.g. new PrismaPg({ connectionString: process.env.DATABASE_URL })). " +
-      "Until then no module should call getPrisma().",
-  );
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }

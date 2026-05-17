@@ -1,25 +1,21 @@
-import { isRole, type Role } from "@/lib/roles";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth";
+import { hasAccess, type Role } from "@/lib/roles";
+import type { SessionUser } from "@/lib/session-types";
 
-export type SessionUser = {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-};
+export type { SessionUser };
 
-// PHASE 0 STUB.
-// Real authentication (NextAuth.js / Auth.js + 2FA) lands in Phase 1.
-// Until then, getCurrentUser() returns a hardcoded fake user whose role
-// can be flipped via the DEV_STUB_ROLE env var so the role-aware shell
-// can be demonstrated. Replace the body of this function in Phase 1.
-export async function getCurrentUser(): Promise<SessionUser> {
-  const stub = process.env.DEV_STUB_ROLE;
-  const role: Role = isRole(stub) ? stub : "OWNER";
+// Returns the authenticated user or null. Used inside layouts/pages that need
+// to render even when logged out (e.g. /login itself doesn't call this).
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  return getSessionUser();
+}
 
-  return {
-    id: "stub-user-id",
-    name: "Stub User",
-    email: "stub@hkenv.local",
-    role,
-  };
+// Hard guard for protected pages. Redirects to /login when no session exists,
+// and to /dashboard when the role is insufficient.
+export async function requireUser(minRole: Role = "OPERATOR"): Promise<SessionUser> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (!hasAccess(minRole, user.role)) redirect("/dashboard");
+  return user;
 }

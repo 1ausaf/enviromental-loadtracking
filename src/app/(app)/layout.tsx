@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { Nav } from "@/components/Nav";
 import { RoleBadge } from "@/components/RoleBadge";
-import { getCurrentUser } from "@/lib/session";
+import { SignOutButton } from "@/components/SignOutButton";
+import { requireUser } from "@/lib/session";
 
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
+  const user = await requireUser();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -31,12 +32,7 @@ export default async function AppLayout({
               <div className="text-xs text-zinc-500">{user.email}</div>
             </div>
             <RoleBadge role={user.role} />
-            <Link
-              href="/login"
-              className="inline-flex h-9 items-center rounded-md border border-zinc-200 px-3 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Sign out
-            </Link>
+            <SignOutButton />
           </div>
         </div>
       </header>
@@ -47,7 +43,7 @@ export default async function AppLayout({
 
       <footer className="border-t border-zinc-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-4 text-xs text-zinc-500 sm:px-6 lg:px-8">
-          HK ENV. WEB-APP &middot; Phase 0 foundation
+          HK ENV. WEB-APP &middot; Phase 1 — Authentication
         </div>
       </footer>
     </div>

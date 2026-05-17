@@ -1,16 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// PHASE 0 STUB.
-// Next.js 16 renamed `middleware` to `proxy` — same mechanism. This file is
-// the entry point for request-level routing logic.
+// Next.js 16 renamed `middleware` to `proxy`. Same mechanism.
 //
-// In Phase 0 there is no real session, so this proxy is a no-op pass-through
-// that runs only on protected app routes. Phase 1 replaces the body with a
-// real session check (cookie or JWT) and a redirect to /login when missing.
-// Per-page role gating (e.g. /admin, /owner) is handled inside the page
-// components via getCurrentUser() + hasAccess() — see src/app/(app)/.
+// Optimistic auth check only: if the session cookie is missing, bounce to
+// /login before the page even renders. Page-level guards in
+// src/lib/session.ts#requireUser do the real session validation against the
+// database (the proxy runs on the Edge runtime and cannot use the Prisma
+// Node driver). See https://pris.ly/d/edge-runtime.
 
-export function proxy(_request: NextRequest) {
+const SESSION_COOKIE = "hkenv_session";
+
+export function proxy(request: NextRequest) {
+  const hasCookie = request.cookies.get(SESSION_COOKIE);
+  if (!hasCookie) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", request.nextUrl.pathname);
+    return NextResponse.redirect(url);
+  }
   return NextResponse.next();
 }
 

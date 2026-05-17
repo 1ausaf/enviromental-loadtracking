@@ -1,8 +1,8 @@
-import { getCurrentUser } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { RoleBadge } from "@/components/RoleBadge";
 
 export default async function DashboardPage() {
-  const user = await getCurrentUser();
+  const user = await requireUser();
 
   return (
     <div className="space-y-6">
@@ -14,8 +14,8 @@ export default async function DashboardPage() {
           <RoleBadge role={user.role} />
         </div>
         <p className="mt-2 text-zinc-600">
-          HK ENV. WEB-APP &mdash; Phase 0 foundation. Modules listed below ship
-          phase by phase per the build plan.
+          HK ENV. WEB-APP &mdash; Phase 1 authentication is live. Subsequent
+          modules ship phase by phase per the build plan.
         </p>
       </div>
 

@@ -1,8 +1,15 @@
-import Link from "next/link";
+import { LoginForm } from "./LoginForm";
 
-// Placeholder. Phase 1 replaces this with the real email + password + 2FA flow
-// per proposal Section 2.1.
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const params = await searchParams;
+  const next = typeof params.next === "string" ? params.next : "/dashboard";
+
   return (
     <div className="flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
@@ -14,18 +21,7 @@ export default function LoginPage() {
             Sign in to the operations platform
           </p>
         </div>
-
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <strong className="font-semibold">Phase 0 placeholder.</strong>{" "}
-          Real email + password + 2FA login lands in Phase 1.
-        </div>
-
-        <Link
-          href="/dashboard"
-          className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800"
-        >
-          Continue to app
-        </Link>
+        <LoginForm next={next} />
       </div>
     </div>
   );

@@ -1,6 +1,9 @@
+import { requireUser } from "@/lib/session";
 import { PlaceholderCard } from "@/components/PlaceholderCard";
 
-export default function OperatorPage() {
+export default async function OperatorPage() {
+  await requireUser("OPERATOR");
+
   return (
     <PlaceholderCard
       title="Operator workspace"

@@ -13,8 +13,8 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | Phase | Module | Status |
 |-------|--------|--------|
 | 0 | Foundation (scaffold, shell, role-aware skeleton) | ✅ Done |
-| 1 | Authentication (email/password, password reset, 2FA, login/logout location) | ⏳ Next |
-| 2 | User & role management | ⏳ |
+| 1 | Authentication (email/password, password reset, 2FA, login/logout location) | ✅ Done |
+| 2 | User & role management | ⏳ Next |
 | 3 | Truck & driver management | ⏳ |
 | 4 | Projects & dashboards | ⏳ |
 | 5 | Dispatch system | ⏳ |
@@ -29,16 +29,19 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 
 - **Next.js 16** (App Router) + TypeScript
 - **Tailwind CSS v4** for mobile-first responsive UI
-- **Prisma 7** ORM with **PostgreSQL** (swappable to MySQL / SQL Server / MongoDB / SQLite via Prisma)
-- **ESLint** (Next defaults)
-
-Auth (NextAuth.js / Auth.js + TOTP 2FA) is wired in Phase 1.
+- **Prisma 7** ORM with **PostgreSQL** (swappable via Prisma adapter)
+- **bcryptjs** password hashing, **otplib** TOTP 2FA, **qrcode** for setup QR images
+- **nodemailer** for transactional email (console fallback when SMTP isn't configured)
+- DB-backed sessions with HTTP-only cookies; 256-bit tokens stored as SHA-256 hashes
 
 ## Prerequisites
 
 - **Node.js 20+** (project tested on Node 24)
 - **npm 10+**
-- **PostgreSQL** instance — only needed once Phase 1+ begins to read/write data. Phase 0 runs without a database.
+- **PostgreSQL 14+** — required from Phase 1 onward. Local options:
+  - your own Postgres install
+  - Docker: `docker run -d --name hkenv-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16`
+  - Prisma's built-in local Postgres: `npx prisma dev` (writes a `DATABASE_URL` automatically)
 
 ## Local setup
 
@@ -48,59 +51,85 @@ npm install
 
 # 2. Configure environment
 cp .env.example .env.local
-# then edit .env.local — at minimum set DATABASE_URL
+# edit .env.local — at minimum set DATABASE_URL and AUTH_SECRET
+# AUTH_SECRET:  openssl rand -base64 32
 
-# 3. (Once you have a database) apply schema
-npx prisma migrate dev
+# 3. Apply the schema
+npm run db:migrate
 
-# 4. Start the dev server
+# 4. Create the first user (Owner)
+npm run db:seed
+# logs the email / password it created — change them via SEED_OWNER_*
+# vars in .env.local before running, if you like
+
+# 5. Start the dev server
 npm run dev
 ```
 
 Open <http://localhost:3000>.
 
-### Testing the role-aware shell (Phase 0 only)
+### Signing in for the first time
 
-Real authentication is Phase 1. Until then, the current user is stubbed via `src/lib/session.ts`. Flip the stub role in `.env.local`:
+1. Go to `/login`. Use the email + password printed by `npm run db:seed`.
+2. After the password step, the app shows a QR code. Open Google Authenticator, Microsoft Authenticator, 1Password, etc. and scan it.
+3. Enter the 6-digit code. The browser asks for location permission — accept to record GPS with the login event (proposal §2.1). Denial is allowed; the denial reason is recorded instead.
+4. You land on `/dashboard`. The role badge in the top-right reflects the Owner role you seeded.
 
-```env
-DEV_STUB_ROLE="OWNER"     # sees Dashboard, Operator, Admin, Owner links
-DEV_STUB_ROLE="ADMIN"     # sees Dashboard, Operator, Admin
-DEV_STUB_ROLE="OPERATOR"  # sees Dashboard, Operator
-```
+### Password reset
 
-Restart the dev server after changing.
+- Click "Forgot password?" on `/login` to email yourself a reset link.
+- Without SMTP configured, the link is printed to the server console (`npm run dev` terminal) instead of sent — handy for local QA.
+- Resetting a password revokes all existing sessions and forces fresh 2FA setup on next sign-in.
 
 ## Project structure
 
 ```
 .
 ├── prisma/
-│   └── schema.prisma         # Role enum + User (grows per phase)
+│   ├── schema.prisma         # Role, User, Session, SessionEvent, PasswordReset
+│   └── seed.ts               # `npm run db:seed` — creates first Owner
 ├── prisma.config.ts          # Prisma 7 config (DB URL for migrations)
-├── public/                   # Static assets
 ├── src/
 │   ├── app/
-│   │   ├── layout.tsx        # Root layout (html, body, fonts)
-│   │   ├── page.tsx          # Landing — redirects to /dashboard
-│   │   ├── globals.css       # Tailwind import + brand tokens
-│   │   ├── login/            # Phase 0 placeholder; Phase 1 real form
-│   │   └── (app)/            # Authenticated app group
-│   │       ├── layout.tsx    # Header, nav, role badge, footer
-│   │       ├── dashboard/
-│   │       ├── operator/
-│   │       ├── admin/        # Page guards to ADMIN+
-│   │       └── owner/        # Page guards to OWNER only
+│   │   ├── layout.tsx
+│   │   ├── page.tsx          # Redirects to /dashboard (proxy bounces to /login if no session)
+│   │   ├── globals.css
+│   │   ├── login/            # Multi-step: email+password → TOTP setup or verify
+│   │   ├── forgot-password/
+│   │   ├── reset-password/
+│   │   ├── (app)/            # Authenticated app group
+│   │   │   ├── layout.tsx    # requireUser() guards the whole group
+│   │   │   ├── dashboard/
+│   │   │   ├── operator/
+│   │   │   ├── admin/        # requireUser("ADMIN")
+│   │   │   └── owner/        # requireUser("OWNER")
+│   │   └── api/auth/
+│   │       ├── login/        # POST email+password → pending-login cookie
+│   │       ├── logout/       # POST geo → revoke session + log LOGOUT event
+│   │       ├── totp/setup/   # POST → returns QR data URL + secret
+│   │       ├── totp/verify/  # POST code+geo → open Session, log LOGIN event
+│   │       ├── forgot-password/  # POST email → email reset link
+│   │       └── reset-password/   # POST token+newPassword → change password
 │   ├── components/
-│   │   ├── Nav.tsx           # Responsive nav (hamburger on mobile)
+│   │   ├── Nav.tsx
 │   │   ├── RoleBadge.tsx
-│   │   └── PlaceholderCard.tsx
+│   │   ├── PlaceholderCard.tsx
+│   │   └── SignOutButton.tsx
 │   ├── lib/
-│   │   ├── db.ts             # Prisma client singleton (adapter wired Phase 1)
+│   │   ├── auth.ts           # startSession, endSession, getSessionUser, cookie helpers
+│   │   ├── db.ts             # PrismaClient + PrismaPg adapter singleton
+│   │   ├── email.ts          # nodemailer w/ console fallback
+│   │   ├── geo.ts            # server-side: parse + bounds-check GeoCapture
+│   │   ├── geo-client.ts     # browser: navigator.geolocation wrapper
+│   │   ├── password.ts       # bcrypt hash/verify + strength check
+│   │   ├── pending-login.ts  # HMAC-signed cookie carrying the multi-step state
 │   │   ├── roles.ts          # Role type, hasAccess()
-│   │   └── session.ts        # getCurrentUser() — Phase 0 stub
+│   │   ├── session.ts        # requireUser() server-side guard for pages
+│   │   ├── session-types.ts
+│   │   ├── tokens.ts         # opaque tokens + sha256 + timingSafeEqual
+│   │   └── totp.ts           # otplib + qrcode wrappers
 │   ├── generated/prisma/     # Generated Prisma client (gitignored)
-│   └── proxy.ts              # Next.js 16 request proxy (was middleware)
+│   └── proxy.ts              # Next 16 request proxy: optimistic cookie check
 ├── .env.example              # Documented env vars; copy to .env.local
 └── proposal.docx             # Signed scope agreement — read first
 ```
@@ -109,27 +138,25 @@ Restart the dev server after changing.
 
 Per **proposal Section 5**, HK Environmental Group's internal IT team owns all database provisioning, hosting, server management, and ongoing infrastructure. BIZMYZE delivers the application layer only.
 
-To point this app at your managed database:
+**Database.** Provision PostgreSQL 14+, create an empty database, and set:
 
-1. Provision a PostgreSQL instance (any version 14+).
-2. Create an empty database and a user with full privileges on it.
-3. In your hosting environment, set the env var:
+```env
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/hkenv?schema=public"
+```
 
-   ```env
-   DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME?schema=public"
-   ```
+Apply the schema in production with:
 
-4. Apply the schema:
+```bash
+npm run db:deploy
+```
 
-   ```bash
-   npx prisma migrate deploy
-   ```
+**Different engine?** Prisma supports PostgreSQL, MySQL, Microsoft SQL Server, MongoDB, and SQLite. Switch `provider` in `prisma/schema.prisma` and update the `DATABASE_URL` format accordingly. We'll help wire the alternate adapter when you confirm the target.
 
-5. Set `AUTH_SECRET` (32+ random bytes) and `AUTH_URL` (your public origin).
+**Auth secret.** Set `AUTH_SECRET` to 32+ random bytes (e.g. `openssl rand -base64 32`). Rotating it invalidates all in-flight pending-login cookies and forces users to restart the login flow (existing sessions are unaffected — they live in the database).
 
-**Using a different database engine?** Prisma supports PostgreSQL, MySQL, Microsoft SQL Server, MongoDB, and SQLite. To switch, change `provider` in `prisma/schema.prisma` and update the `DATABASE_URL` format accordingly. We will help with that when you confirm the target.
+**Email.** Provide an SMTP relay (any provider) and set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`. Without these, the password-reset link is logged to stdout instead of sent — fine for staging, not for production.
 
-**Hosting platform.** This app is a standard Node.js / Next.js application. It runs on any platform with Node 20+ runtime: AWS, Azure, Google Cloud, Tencent CloudBase, Vercel, Railway, Render, self-managed VMs, or behind a reverse proxy in front of IIS. The `npm run build` output is served by `npm start`.
+**Hosting platform.** Standard Node.js / Next.js app. Runs on any platform with Node 20+ runtime: AWS, Azure, Google Cloud, Tencent CloudBase, Vercel, Railway, Render, self-managed VMs, or behind a reverse proxy in front of IIS. `npm run build` then `npm start`.
 
 ## License
 

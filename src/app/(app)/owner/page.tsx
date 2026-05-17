@@ -1,11 +1,8 @@
-import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/session";
-import { hasAccess } from "@/lib/roles";
+import { requireUser } from "@/lib/session";
 import { PlaceholderCard } from "@/components/PlaceholderCard";
 
 export default async function OwnerPage() {
-  const user = await getCurrentUser();
-  if (!hasAccess("OWNER", user.role)) redirect("/dashboard");
+  await requireUser("OWNER");
 
   return (
     <PlaceholderCard
