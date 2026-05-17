@@ -33,6 +33,13 @@ export default async function AdminTicketPage({
           ← Back to tickets
         </Link>
         <div className="flex items-center gap-2">
+          <a
+            href={`/api/exports/tickets/${ticket.id}?format=pdf`}
+            className="inline-flex h-10 items-center rounded-md border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+            download
+          >
+            Download PDF
+          </a>
           <PrintButton />
           {ticket.status === "SUBMITTED" || ticket.status === "FLAGGED" || ticket.status === "APPROVED" ? (
             <AdminTicketActions id={ticket.id} status={ticket.status} />

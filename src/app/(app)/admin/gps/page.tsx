@@ -4,6 +4,7 @@ import { listOperators } from "@/lib/operators";
 import { listProjects } from "@/lib/projects";
 import { listTrips, listRouteCounts } from "@/lib/trips";
 import { GpsFilters } from "./GpsFilters";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -46,14 +47,17 @@ export default async function GpsHistoryPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
-          GPS history
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          {trips.length} trip{trips.length === 1 ? "" : "s"} match. Click any row
-          to replay the full route on a map.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+            GPS history
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            {trips.length} trip{trips.length === 1 ? "" : "s"} match. Click any row
+            to replay the full route on a map.
+          </p>
+        </div>
+        <ExportButtons basePath="/api/exports/trips" />
       </div>
 
       <GpsFilters

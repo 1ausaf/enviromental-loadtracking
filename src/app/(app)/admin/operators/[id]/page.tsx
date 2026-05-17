@@ -5,6 +5,7 @@ import { getOperator, OperatorError } from "@/lib/operators";
 import { getOperatorLoadCounts } from "@/lib/stats";
 import { RoleBadge } from "@/components/RoleBadge";
 import { TruckStatusBadge, truckTypeLabel } from "@/components/TruckBadges";
+import { ExportButtons } from "@/components/ExportButtons";
 import { OperatorEditForm } from "./OperatorEditForm";
 import { PhotoUpload } from "./PhotoUpload";
 
@@ -30,13 +31,14 @@ export default async function OperatorDetailPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/operators"
           className="text-sm text-zinc-600 underline hover:text-zinc-900"
         >
           ← Back to operators
         </Link>
+        <ExportButtons basePath={`/api/exports/operators/${op.id}`} forwardFilters={false} />
       </div>
 
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">

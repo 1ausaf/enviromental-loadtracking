@@ -5,6 +5,7 @@ import { listTickets } from "@/lib/tickets";
 import { listOperators } from "@/lib/operators";
 import { listProjects } from "@/lib/projects";
 import { TicketStatusBadge } from "@/components/TicketStatusBadge";
+import { ExportButtons } from "@/components/ExportButtons";
 import { TicketsFilters } from "./TicketsFilters";
 
 export const dynamic = "force-dynamic";
@@ -52,15 +53,18 @@ export default async function AdminTicketsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
-          Tickets
-        </h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          {tickets.length} {status === "ALL" ? "ticket" : status.toLowerCase()}
-          {tickets.length === 1 ? "" : "s"} matching. Approve or flag from the
-          detail view.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
+            Tickets
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            {tickets.length} {status === "ALL" ? "ticket" : status.toLowerCase()}
+            {tickets.length === 1 ? "" : "s"} matching. Approve or flag from the
+            detail view.
+          </p>
+        </div>
+        <ExportButtons basePath="/api/exports/tickets" />
       </div>
 
       <TicketsFilters

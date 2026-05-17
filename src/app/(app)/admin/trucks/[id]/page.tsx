@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { TruckEditForm } from "./TruckEditForm";
 import { AssignmentForm } from "./AssignmentForm";
 import { TruckStatusBadge, truckTypeLabel } from "@/components/TruckBadges";
+import { ExportButtons } from "@/components/ExportButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,14 @@ export default async function TruckDetailPage({
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           href="/admin/trucks"
           className="text-sm text-zinc-600 underline hover:text-zinc-900"
         >
           ← Back to trucks
         </Link>
+        <ExportButtons basePath={`/api/exports/trucks/${truck.id}`} forwardFilters={false} />
       </div>
 
       <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
