@@ -4,6 +4,7 @@ import type {
   Prisma,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { endTripForDispatch, startTripForDispatch } from "@/lib/trips";
 
 export class DispatchError extends Error {
   constructor(
@@ -129,9 +130,14 @@ export async function cancelDispatch(id: string): Promise<void> {
     throw new DispatchError("INVALID_STATE", "Already completed — can't cancel.");
   }
   if (current.status === "CANCELLED") return;
-  await prisma.dispatch.update({
-    where: { id },
-    data: { status: "CANCELLED", cancelledAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    await tx.dispatch.update({
+      where: { id },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+    // If a trip is in progress on this dispatch, close it so the browser
+    // sampler stops being accepted by the API.
+    await endTripForDispatch(tx, id);
   });
 }
 
@@ -191,8 +197,8 @@ export async function flagDispatch(
   });
 }
 
-// Operator "Start" — transitions to EN_ROUTE_TO_PICKUP.
-// Phase 6 will hook GPS trip-tracking onto the same call site.
+// Operator "Start" — transitions to EN_ROUTE_TO_PICKUP and opens a Trip
+// row that the browser starts feeding GPS samples into (Phase 6).
 export async function startDispatch(operatorId: string, dispatchId: string): Promise<void> {
   const d = await loadOwnDispatch(operatorId, dispatchId);
   if (d.acceptance !== "ACCEPTED") {
@@ -201,11 +207,20 @@ export async function startDispatch(operatorId: string, dispatchId: string): Pro
   if (d.status !== "IDLE") {
     throw new DispatchError("INVALID_STATE", "Trip already started.");
   }
-  await prisma.dispatch.update({
-    where: { id: dispatchId },
-    data: { status: "EN_ROUTE_TO_PICKUP", startedAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    await tx.dispatch.update({
+      where: { id: dispatchId },
+      data: { status: "EN_ROUTE_TO_PICKUP", startedAt: new Date() },
+    });
+    await startTripForDispatch(tx, {
+      id: d.id,
+      operatorId: d.operatorId,
+      truckId: d.truckId,
+      projectId: d.projectId,
+      pickupNote: d.pickupNote,
+      dumpNote: d.dumpNote,
+    });
   });
-  // TODO Phase 6: kick off Trip + first GPS sample here.
 }
 
 // Operator forward-state transition.
@@ -224,12 +239,20 @@ export async function advanceDispatch(operatorId: string, dispatchId: string): P
       `Can't advance from ${d.status}.`,
     );
   }
-  await prisma.dispatch.update({
-    where: { id: dispatchId },
-    data: {
-      status: next,
-      ...(next === "COMPLETED" ? { completedAt: new Date() } : {}),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.dispatch.update({
+      where: { id: dispatchId },
+      data: {
+        status: next,
+        ...(next === "COMPLETED" ? { completedAt: new Date() } : {}),
+      },
+    });
+    if (next === "COMPLETED") {
+      // Close the GPS trip so late samples are dropped (proposal §2.5:
+      // "GPS is active only while the browser session is open" — once the
+      // operator marks the haul complete, sampling is over).
+      await endTripForDispatch(tx, dispatchId);
+    }
   });
   // TODO Phase 8: when next === "COMPLETED", trigger the eTicket submission flow.
   return next;
@@ -286,7 +309,11 @@ export async function listDispatchesForOperator(operatorId: string) {
       { status: "asc" },
       { scheduledFor: "asc" },
     ],
-    include: dispatchInclude,
+    include: {
+      ...dispatchInclude,
+      // Trip id lets the operator's browser POST GPS samples to /api/trips/[id]/points.
+      trip: { select: { id: true, endedAt: true } },
+    },
     take: 50,
   });
 }

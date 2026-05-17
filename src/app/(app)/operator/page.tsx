@@ -62,6 +62,7 @@ export default async function OperatorPage() {
                 pickupNote: d.pickupNote,
                 dumpNote: d.dumpNote,
                 notes: d.notes,
+                tripId: d.trip?.endedAt ? null : d.trip?.id ?? null,
               }}
             />
           ))}

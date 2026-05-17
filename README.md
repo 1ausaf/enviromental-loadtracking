@@ -18,7 +18,7 @@ The signed proposal in [`proposal.docx`](./proposal.docx) (Section 2) is the def
 | 3 | Truck & driver management (plates, types, status, assignment, photos) | ✅ Done |
 | 4 | Projects & dashboards (budget, progress, assignments, vault) | ✅ Done |
 | 5 | Dispatch system (schedule, accept/flag, live status board) | ✅ Done |
-| 6 | GPS & location history | ⏳ |
+| 6 | GPS & location history (trip recording, map replay, route analytics) | ✅ Done |
 | 7 | Digital load ticketing (eTicketing) | ⏳ |
 | 8 | End-of-haul submission & arrival alerts | ⏳ |
 | 9 | Owner exception approvals | ⏳ |

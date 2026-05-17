@@ -14,9 +14,9 @@ export default async function DashboardPage() {
           <RoleBadge role={user.role} />
         </div>
         <p className="mt-2 text-zinc-600">
-          HK ENV. WEB-APP &mdash; Phases 1–5 (auth, users, trucks &amp; drivers,
-          projects, dispatch) are live. Subsequent modules ship phase by phase
-          per the build plan.
+          HK ENV. WEB-APP &mdash; Phases 1–6 (auth, users, trucks &amp; drivers,
+          projects, dispatch, GPS) are live. Subsequent modules ship phase by
+          phase per the build plan.
         </p>
       </div>
 

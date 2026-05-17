@@ -130,8 +130,9 @@ export default async function AdminPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-semibold text-zinc-900">Admin tools</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <AdminLink href="/admin/dispatch" title="Dispatch" sub="Schedule & track" />
+          <AdminLink href="/admin/gps" title="GPS" sub="Routes & replay" />
           <AdminLink href="/admin/projects" title="Projects" sub="Create & staff" />
           <AdminLink href="/admin/users" title="Users" sub="Roles & access" />
           <AdminLink href="/admin/trucks" title="Trucks" sub="Plates & status" />

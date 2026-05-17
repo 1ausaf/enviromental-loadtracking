@@ -119,6 +119,7 @@ model Operator {
   assignments   TruckAssignmentEvent[]
   projects      OperatorOnProject[]
   dispatches    Dispatch[]
+  trips         Trip[]
 }
 
 model Truck {
@@ -136,6 +137,7 @@ model Truck {
   assignments         TruckAssignmentEvent[]
   projects            TruckOnProject[]
   dispatches          Dispatch[]
+  trips               Trip[]
 }
 
 model Project {
@@ -156,6 +158,7 @@ model Project {
   trucks          TruckOnProject[]
   documents       ProjectDocument[]
   dispatches      Dispatch[]
+  trips           Trip[]
 
   @@index([status])
 }
@@ -190,6 +193,7 @@ model Dispatch {
   operator      Operator            @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   truck         Truck               @relation(fields: [truckId], references: [id], onDelete: Cascade)
   createdBy     User                @relation(fields: [createdById], references: [id], onDelete: NoAction)
+  trip          Trip?
 
   @@index([scheduledFor])
   @@index([projectId, scheduledFor])
@@ -197,6 +201,61 @@ model Dispatch {
   @@index([truckId])
   @@index([status])
   @@index([acceptance])
+}
+
+// GPS trip per proposal §2.5. 1:1 with a dispatch — created on Start,
+// finalised when the operator advances to COMPLETED. Denormalises start /
+// end coords + point count so the search list doesn't have to join.
+model Trip {
+  id           String      @id @default(cuid())
+  dispatchId   String      @unique
+  operatorId   String
+  truckId      String
+  projectId    String
+  startedAt    DateTime    @default(now())
+  endedAt      DateTime?
+
+  // Updated as samples arrive — saves the list view from aggregating points.
+  startLatitude   Float?
+  startLongitude  Float?
+  endLatitude     Float?
+  endLongitude    Float?
+  pointCount      Int      @default(0)
+  totalDistanceM  Float?   // sum of segment distances, updated as we go
+
+  // Convenience copies from the dispatch (so trip search by site doesn't
+  // need a dispatch join either). Updated on Trip create.
+  pickupNote   String?
+  dumpNote     String?
+
+  dispatch     Dispatch    @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  operator     Operator    @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  truck        Truck       @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  points       TripPoint[]
+
+  @@index([operatorId, startedAt])
+  @@index([projectId, startedAt])
+  @@index([truckId, startedAt])
+  @@index([startedAt])
+}
+
+// Individual GPS sample from the operator's browser. The browser throttles
+// to ~30s / ~200m before posting (configurable in src/components/GpsTracker),
+// so we don't end up with thousands of rows per trip.
+model TripPoint {
+  id          String   @id @default(cuid())
+  tripId      String
+  recordedAt  DateTime
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  speed       Float?
+  heading     Float?
+
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, recordedAt])
 }
 
 // Join table for operators ↔ projects (proposal §2.4: "Assign operators and

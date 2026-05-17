@@ -16,6 +16,7 @@ const ITEMS: NavItem[] = [
   { href: "/operator", label: "My dispatches", required: "OPERATOR" },
   { href: "/admin", label: "Admin", required: "ADMIN" },
   { href: "/admin/dispatch", label: "Dispatch", required: "ADMIN" },
+  { href: "/admin/gps", label: "GPS", required: "ADMIN" },
   { href: "/admin/projects", label: "Projects", required: "ADMIN" },
   { href: "/admin/users", label: "Users", required: "ADMIN" },
   { href: "/admin/trucks", label: "Trucks", required: "ADMIN" },

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { DispatchAcceptance, DispatchStatus } from "@/generated/prisma/client";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
+import { GpsTracker } from "@/components/GpsTracker";
 import {
   acceptDispatchAction,
   advanceDispatchAction,
@@ -21,7 +22,14 @@ type CardData = {
   pickupNote: string | null;
   dumpNote: string | null;
   notes: string | null;
+  tripId: string | null; // present + active while haul is in progress
 };
+
+const TRIP_ACTIVE = new Set<DispatchStatus>([
+  "EN_ROUTE_TO_PICKUP",
+  "LOADING",
+  "EN_ROUTE_TO_DUMP",
+]);
 
 const fullDtFmt = new Intl.DateTimeFormat("en-CA", {
   weekday: "short",
@@ -145,6 +153,12 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
           </span>
         ) : null}
       </div>
+
+      {TRIP_ACTIVE.has(data.status) && data.tripId ? (
+        <div className="mt-3">
+          <GpsTracker tripId={data.tripId} />
+        </div>
+      ) : null}
 
       {flagging ? (
         <div className="mt-4 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
