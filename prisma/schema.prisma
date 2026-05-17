@@ -92,6 +92,14 @@ model SessionEvent {
   @@index([sessionId])
 }
 
+// Generic atomic counter for sequence-like values that need stronger control
+// than a Postgres SEQUENCE (e.g. recoverable from outage, single source of
+// truth across multi-region replicas). Phase 2 uses it for employee IDs.
+model SystemCounter {
+  key   String @id
+  value Int    @default(0)
+}
+
 // Short-lived password reset tokens. tokenHash = SHA-256(rawToken).
 model PasswordReset {
   id         String   @id @default(cuid())

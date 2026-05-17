@@ -15,6 +15,7 @@ const ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", required: "OPERATOR" },
   { href: "/operator", label: "Operator", required: "OPERATOR" },
   { href: "/admin", label: "Admin", required: "ADMIN" },
+  { href: "/admin/users", label: "Users", required: "ADMIN" },
   { href: "/owner", label: "Owner", required: "OWNER" },
 ];
 
@@ -95,7 +96,9 @@ function NavLink({
   onNavigate?: () => void;
   block?: boolean;
 }) {
-  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const active =
+    pathname === item.href ||
+    (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));
   return (
     <Link
       href={item.href}
