@@ -5,6 +5,12 @@
 export const GPS_MIN_INTERVAL_MS = 30_000; // 30 seconds
 export const GPS_MIN_DISTANCE_M = 200; // 200 metres
 
+// Lock-screen mode runs while the operator is actively in a trip and the
+// "DO NOT EXIT THIS BROWSER" overlay is up. The interval drops to 3 seconds
+// (with no distance gate) so admins get near-live updates during the haul.
+export const GPS_LOCK_INTERVAL_MS = 3_000;
+export const GPS_LOCK_DISTANCE_M = 0;
+
 // Distance in metres between two lat/lng pairs (Haversine).
 export function haversineMetres(
   aLat: number,
