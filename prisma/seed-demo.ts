@@ -18,8 +18,11 @@ const DEMO_TAG = "demo";
 const PASSWORD = "DemoPass!2026";
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set.");
+  // Prefer a direct connection if available — the seed runs a long
+  // interactive transaction that doesn't play nicely with PgBouncer
+  // transaction-mode pooling (Supabase port 6543).
+  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL (or DIRECT_URL) is not set.");
   const prismaClient = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 
   console.log("Demo seed: wiping prior demo data…");

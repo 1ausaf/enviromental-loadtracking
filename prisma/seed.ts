@@ -16,8 +16,10 @@ const formatEmployeeId = (n: number) => `HK-${String(n).padStart(4, "0")}`;
 // users are created via /admin/users in the app.
 
 async function main() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set.");
+  // Prefer DIRECT_URL when running against Supabase / a pooled provider —
+  // see prisma.config.ts for the same fallback.
+  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL (or DIRECT_URL) is not set.");
   const adapter = new PrismaPg({ connectionString: url });
   const prisma = new PrismaClient({ adapter });
 
