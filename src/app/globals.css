@@ -1,9 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #18181b;
-  --brand: #0f766e;
+  /* Brand palette — keep teal as the anchor, layer in a warm-cool neutral
+     spread (slate) instead of pure zinc grey. Same tokens are used by all
+     three roles so a colour change here propagates everywhere. */
+  --background: #f8fafc;     /* slate-50  page bg */
+  --surface:    #ffffff;     /* card surface */
+  --foreground: #0f172a;     /* slate-900 body text */
+  --muted:      #64748b;     /* slate-500 secondary text */
+  --rule:       #e2e8f0;     /* slate-200 borders */
+  --brand:      #0f766e;     /* teal-700  primary actions */
+  --brand-soft: #ccfbf1;     /* teal-100  soft accent fills */
 }
 
 @theme inline {
@@ -15,6 +22,24 @@
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Operator-friendly typography. Drivers use the app on phones in the cab,
+   often with gloves and in bright sun — everything is bumped up a level. */
+[data-app-role="OPERATOR"] {
+  font-size: 16.5px;
+}
+[data-app-role="OPERATOR"] main {
+  /* Slightly more breathing room around the main content on phones. */
+  --tw-leading: 1.55;
+}
+/* Bigger tap targets for operators — buttons and link-buttons in the
+   action zones grow taller. */
+[data-app-role="OPERATOR"] button,
+[data-app-role="OPERATOR"] a[class*="rounded-md"][class*="bg-"] {
+  min-height: 48px;
 }
 
 /* Print: drop the app chrome (header/nav/footer) and back-links so the
