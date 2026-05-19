@@ -23,7 +23,7 @@ export function ArrivalCountdown({ completedAt }: { completedAt: string }) {
   return (
     <span
       className={`inline-flex min-w-[80px] items-center justify-center rounded-md px-3 py-1.5 font-mono text-sm font-semibold tabular-nums ${tone}`}
-      title={`On-site since ${new Date(completedAt).toLocaleTimeString()}`}
+      title={`On-site since ${new Date(completedAt).toLocaleTimeString("en-CA", { timeZone: "America/Toronto" })}`}
     >
       {format(elapsedSec)}
     </span>

@@ -33,6 +33,13 @@ type QueuedPoint = {
 
 export type GpsMode = "background" | "lock";
 
+export type LastPosition = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  recordedAt: number;
+};
+
 export type UseGpsTrackerOptions = {
   // null = no trip yet (pre-Start). The hook still runs the geolocation
   // pipeline so the operator can be prompted for permission before Start is
@@ -48,16 +55,20 @@ export type UseGpsTrackerReturn = {
   // True once we have a fix from the OS, regardless of whether a tripId
   // exists yet. The Start button uses this to gate "begin task without GPS".
   hasFix: boolean;
+  // Most recent successful position fix. Geofence components read this on
+  // every render to decide whether to surface confirm buttons.
+  lastPosition: LastPosition | null;
   startTracking: () => void;
   // Forces an immediate flush AND a fresh getCurrentPosition tagged into the
   // trip — used to pin the exact lat/lng at the moment of a status-advance
   // button click so admins can see where each transition happened.
-  captureNow: () => Promise<void>;
+  captureNow: () => Promise<LastPosition | null>;
 };
 
 export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTrackerReturn {
   const [status, setStatus] = useState<GpsStatus>({ kind: "needsPermission" });
   const [hasFix, setHasFix] = useState(false);
+  const [lastPosition, setLastPosition] = useState<LastPosition | null>(null);
 
   const watchRef = useRef<number | null>(null);
   const lastSentRef = useRef<{ at: number; lat: number; lng: number } | null>(null);
@@ -71,7 +82,6 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
   const flushNow = useCallback(async () => {
     flushTimerRef.current = null;
     const currentTripId = tripIdRef.current;
-    // No trip yet → drop queued samples (they were pre-Start permission probes).
     if (!currentTripId) {
       queueRef.current.length = 0;
       return;
@@ -93,7 +103,6 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
           : { kind: "running", lastAt: Date.now(), sent: json.accepted ?? 0, lastError: null },
       );
     } catch (e) {
-      // Put samples back at the head; retry on the next flush trigger.
       queueRef.current.unshift(...batch);
       setStatus((s) =>
         s.kind === "running"
@@ -105,16 +114,20 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
 
   const scheduleFlush = useCallback(() => {
     if (flushTimerRef.current) return;
-    // Lock mode flushes faster (1s debounce) so admins see near-live points.
     const wait = modeRef.current === "lock" ? 1_000 : 2_000;
     flushTimerRef.current = setTimeout(flushNow, wait);
   }, [flushNow]);
 
-  // Shared per-position handler. Reads current mode for gating thresholds.
   const handlePosition = useCallback(
     (pos: GeolocationPosition) => {
       setHasFix(true);
       const now = Date.now();
+      setLastPosition({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy ?? null,
+        recordedAt: now,
+      });
       const last = lastSentRef.current;
       const intervalGate =
         modeRef.current === "lock" ? GPS_LOCK_INTERVAL_MS : GPS_MIN_INTERVAL_MS;
@@ -150,8 +163,6 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
         heading: pos.coords.heading ?? null,
       });
       lastSentRef.current = { at: now, lat: pos.coords.latitude, lng: pos.coords.longitude };
-      // No tripId yet → don't bother flushing (flushNow will drop the queue).
-      // We keep the state machine in "running" so the UI shows GPS is on.
       setStatus((s) =>
         s.kind === "running"
           ? s
@@ -163,14 +174,11 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
     [scheduleFlush],
   );
 
-  // Start the sampler from a user gesture (button click). MUST be called
-  // synchronously inside the click handler for Safari to honour the prompt.
   const startTracking = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setStatus({ kind: "denied", reason: "Geolocation not supported by this browser." });
       return;
     }
-    // Already running? Don't restart.
     if (watchRef.current !== null) return;
 
     setStatus({ kind: "requesting" });
@@ -189,9 +197,6 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
       setStatus({ kind: "denied", reason: map[err.code] ?? "Location error." });
     }
 
-    // Safari is happiest with a getCurrentPosition first — that's the call
-    // that synchronously triggers the permission prompt from the user-gesture
-    // stack. Once we have a fix, register the long-running watchPosition.
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         handlePosition(pos);
@@ -206,32 +211,37 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
     );
   }, [handlePosition]);
 
-  // Forces an immediate fresh sample + flush. Used by status-advance buttons
-  // so the trip's point trail has a pin at the exact click location/time.
-  const captureNow = useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-    // Bypass the interval/distance gate by clearing lastSentRef so the new
-    // sample is unconditionally queued.
-    lastSentRef.current = null;
-    await new Promise<void>((resolve) => {
+  // Returns the captured position so callers (e.g. confirm-pickup tap) can
+  // pass it to the server action that requires geofence validation.
+  const captureNow = useCallback(async (): Promise<LastPosition | null> => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return null;
+    lastSentRef.current = null; // bypass interval/distance gate
+    const pos = await new Promise<LastPosition | null>((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          handlePosition(pos);
-          resolve();
+        (p) => {
+          handlePosition(p);
+          resolve({
+            latitude: p.coords.latitude,
+            longitude: p.coords.longitude,
+            accuracy: p.coords.accuracy ?? null,
+            recordedAt: Date.now(),
+          });
         },
-        // Don't fail the click on a timeout — admins will see the cluster of
-        // background watchPosition samples around the click time regardless.
-        () => resolve(),
+        () => {
+          // Fall back on whatever the last watchPosition fix was so the
+          // server still gets coords to validate.
+          resolve(lastPosition);
+        },
         { enableHighAccuracy: true, maximumAge: 1_000, timeout: 4_000 },
       );
     });
-    // Flush right away rather than waiting on the debounce.
     if (flushTimerRef.current) {
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
     }
     await flushNow();
-  }, [flushNow, handlePosition]);
+    return pos;
+  }, [flushNow, handlePosition, lastPosition]);
 
   // Cleanup on unmount: stop the watch and best-effort flush remaining points
   // via sendBeacon (survives page unload, unlike fetch + keepalive on Safari).
@@ -250,12 +260,73 @@ export function useGpsTracker({ tripId, mode }: UseGpsTrackerOptions): UseGpsTra
     };
   }, []);
 
-  // When a trip starts (tripId transitions null → string) flush any samples
-  // that piled up during the brief gap between Start and the server action
-  // creating the Trip row.
   useEffect(() => {
     if (tripId && queueRef.current.length > 0) scheduleFlush();
   }, [tripId, scheduleFlush]);
 
-  return { status, hasFix, startTracking, captureNow };
+  // Permissions API watcher: handles the "user granted permission in browser
+  // settings but the page is stale" case. Without this, the operator would
+  // have to reload before the GPS state caught up. Browsers that don't expose
+  // navigator.permissions silently skip (Safari < 16 etc.) — those users
+  // still tap "Try again" or hit reload.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("permissions" in navigator)) return;
+    let cancelled = false;
+    let permStatus: PermissionStatus | null = null;
+
+    function onChange() {
+      if (cancelled || !permStatus) return;
+      if (permStatus.state === "granted" && watchRef.current === null) {
+        // User flipped to allowed in settings — start tracking without
+        // needing them to tap the button again.
+        startTracking();
+      } else if (permStatus.state === "denied" && watchRef.current !== null) {
+        navigator.geolocation.clearWatch(watchRef.current);
+        watchRef.current = null;
+        setHasFix(false);
+        setStatus({ kind: "denied", reason: "Location permission was revoked." });
+      }
+    }
+
+    navigator.permissions
+      .query({ name: "geolocation" as PermissionName })
+      .then((res) => {
+        if (cancelled) return;
+        permStatus = res;
+        // If permission was already granted on mount, auto-start so the user
+        // doesn't have to tap. Chrome respects this; Safari may still need
+        // the gesture, in which case startTracking errors and we fall back
+        // to the manual button.
+        if (res.state === "granted") startTracking();
+        res.addEventListener("change", onChange);
+      })
+      .catch(() => {
+        /* permission API not available on this browser */
+      });
+
+    return () => {
+      cancelled = true;
+      if (permStatus) permStatus.removeEventListener("change", onChange);
+    };
+  }, [startTracking]);
+
+  // Re-poll permission when the page becomes visible again. Mobile Safari
+  // backgrounds the page when the user pops out to Settings to flip the
+  // permission; on return we should pick up the change immediately.
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      if (typeof navigator === "undefined" || !("permissions" in navigator)) return;
+      navigator.permissions
+        .query({ name: "geolocation" as PermissionName })
+        .then((res) => {
+          if (res.state === "granted" && watchRef.current === null) startTracking();
+        })
+        .catch(() => {});
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [startTracking]);
+
+  return { status, hasFix, lastPosition, startTracking, captureNow };
 }

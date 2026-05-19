@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 const STATUSES: ProjectStatus[] = ["ACTIVE", "COMPLETED"];
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   year: "numeric",
   month: "short",
   day: "numeric",

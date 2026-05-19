@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import type { ProjectStatus } from "@/generated/prisma/client";
+import { MapPickerClient } from "@/components/MapPickerClient";
 import {
   createProjectAction,
   updateProjectAction,
@@ -22,6 +23,10 @@ type Initial = {
   loadTarget: number;
   scheduleNotes: string | null;
   status: ProjectStatus;
+  pickupLatitude: number | null;
+  pickupLongitude: number | null;
+  dumpLatitude: number | null;
+  dumpLongitude: number | null;
 };
 
 function isoDate(d: Date | null): string {
@@ -82,7 +87,7 @@ function FormBody({
   label: string;
 }) {
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field id="name" label="Project name" defaultValue={initial?.name} required autoFocus={!initial} />
         <Field id="client" label="Client" defaultValue={initial?.client} required />
@@ -102,7 +107,7 @@ function FormBody({
         />
         <Field
           id="loadTarget"
-          label="Load target"
+          label="Total loads for project"
           type="number"
           step="1"
           min="0"
@@ -136,6 +141,33 @@ function FormBody({
             <option value="COMPLETED">Completed</option>
           </select>
         </div>
+      </div>
+
+      {/* Geofence pins — required for the operator's pickup/drop confirmation
+          flow. Empty = operator can't start any dispatch on this project. */}
+      <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-900">Geofence locations</h3>
+          <p className="mt-1 text-xs text-zinc-600">
+            Drop a pin at the pickup and dump points. The operator&apos;s app
+            will only let them confirm a load when they&apos;re within 50m of
+            these points.
+          </p>
+        </div>
+        <MapPickerClient
+          label="Pickup location"
+          latitude={initial?.pickupLatitude ?? null}
+          longitude={initial?.pickupLongitude ?? null}
+          nameLat="pickupLatitude"
+          nameLng="pickupLongitude"
+        />
+        <MapPickerClient
+          label="Dump location"
+          latitude={initial?.dumpLatitude ?? null}
+          longitude={initial?.dumpLongitude ?? null}
+          nameLat="dumpLatitude"
+          nameLng="dumpLongitude"
+        />
       </div>
 
       {state.status === "error" ? (

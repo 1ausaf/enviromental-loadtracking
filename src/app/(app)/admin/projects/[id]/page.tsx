@@ -7,10 +7,12 @@ import {
   getFlaggedIssueCount,
   ProjectError,
 } from "@/lib/projects";
+import { getProjectLoadPool } from "@/lib/dispatch-loads";
 import { listOperators } from "@/lib/operators";
 import { listTrucks } from "@/lib/trucks";
 import { ProgressBar } from "@/components/ProgressBar";
 import { ExportButtons } from "@/components/ExportButtons";
+import { fmtDate } from "@/lib/format";
 import { ProjectForm } from "../ProjectForm";
 import { OperatorPicker } from "./OperatorPicker";
 import { TruckPicker } from "./TruckPicker";
@@ -22,11 +24,6 @@ const moneyFmt = new Intl.NumberFormat("en-CA", {
   style: "currency",
   currency: "CAD",
   maximumFractionDigits: 0,
-});
-const dateFmt = new Intl.DateTimeFormat("en-CA", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
 });
 
 export default async function ProjectDetailPage({
@@ -45,11 +42,12 @@ export default async function ProjectDetailPage({
     throw e;
   }
 
-  const [progress, issueCount, allOperators, allTrucks] = await Promise.all([
+  const [progress, issueCount, allOperators, allTrucks, pool] = await Promise.all([
     getProjectProgress(id, project.loadTarget),
     getFlaggedIssueCount(id),
     listOperators(),
     listTrucks({ status: "ALL" }),
+    getProjectLoadPool(id),
   ]);
 
   const assignedOpIds = new Set(project.operators.map((o) => o.operatorId));
@@ -89,13 +87,13 @@ export default async function ProjectDetailPage({
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm text-zinc-700 sm:grid-cols-4">
           <div>
             <dt className="text-xs uppercase tracking-wide text-zinc-500">Start</dt>
-            <dd>{dateFmt.format(project.startDate)}</dd>
+            <dd>{fmtDate(project.startDate)}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase tracking-wide text-zinc-500">End</dt>
             <dd>
               {project.endDate ? (
-                dateFmt.format(project.endDate)
+                fmtDate(project.endDate)
               ) : (
                 <span className="italic text-zinc-400">open-ended</span>
               )}
@@ -113,6 +111,59 @@ export default async function ProjectDetailPage({
         <div className="mt-6">
           <ProgressBar completed={progress.completedLoads} target={project.loadTarget} />
         </div>
+
+        {/* Load pool breakdown — sum across all non-cancelled dispatches.
+            Helps admins see how much of the project's load target is still
+            unassigned vs already in flight. */}
+        <div className="mt-4 grid grid-cols-2 gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm sm:grid-cols-4">
+          <PoolStat label="Total" value={pool.totalLoads.toLocaleString()} tone="zinc" />
+          <PoolStat label="Assigned" value={pool.loadsAssigned.toLocaleString()} tone="sky" />
+          <PoolStat label="Completed" value={pool.loadsCompleted.toLocaleString()} tone="emerald" />
+          <PoolStat
+            label="Still to assign"
+            value={pool.loadsUnassigned.toLocaleString()}
+            tone={pool.loadsUnassigned > 0 ? "amber" : "zinc"}
+          />
+        </div>
+
+        {pool.perDispatch.length > 0 ? (
+          <div className="mt-4">
+            <div className="mb-2 text-xs uppercase tracking-wide text-zinc-500">
+              Per-operator breakdown
+            </div>
+            <div className="overflow-hidden rounded-md border border-zinc-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Operator</th>
+                    <th className="px-3 py-2 text-right font-medium">Assigned</th>
+                    <th className="px-3 py-2 text-right font-medium">Completed</th>
+                    <th className="px-3 py-2 text-right font-medium">Remaining</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 bg-white">
+                  {pool.perDispatch.map((row) => (
+                    <tr key={row.dispatchId}>
+                      <td className="px-3 py-2 text-zinc-900">{row.operatorName}</td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-900">{row.loadsAssigned}</td>
+                      <td className="px-3 py-2 text-right font-mono text-emerald-700">{row.loadsCompleted}</td>
+                      <td className="px-3 py-2 text-right font-mono text-zinc-600">
+                        {row.loadsAssigned - row.loadsCompleted}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        {project.pickupLatitude == null || project.dumpLatitude == null ? (
+          <p className="mt-4 text-sm text-amber-800">
+            ⚠ Pickup or dump location not set yet. Drop pins below — operators
+            can&apos;t start a haul on this project until both are placed.
+          </p>
+        ) : null}
         {issueCount > 0 ? (
           <p className="mt-3 text-sm text-amber-800">
             ⚠ {issueCount} flagged issue{issueCount === 1 ? "" : "s"} — review in the
@@ -207,6 +258,10 @@ export default async function ProjectDetailPage({
               loadTarget: project.loadTarget,
               scheduleNotes: project.scheduleNotes,
               status: project.status,
+              pickupLatitude: project.pickupLatitude,
+              pickupLongitude: project.pickupLongitude,
+              dumpLatitude: project.dumpLatitude,
+              dumpLongitude: project.dumpLongitude,
             }}
           />
         </div>
@@ -219,3 +274,26 @@ export default async function ProjectDetailPage({
 }
 
 import { DeleteProjectButton } from "./DeleteProjectButton";
+
+function PoolStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "zinc" | "sky" | "emerald" | "amber";
+}) {
+  const toneClass = {
+    zinc: "text-zinc-900",
+    sky: "text-sky-800",
+    emerald: "text-emerald-800",
+    amber: "text-amber-900",
+  }[tone];
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`font-mono text-lg ${toneClass}`}>{value}</div>
+    </div>
+  );
+}

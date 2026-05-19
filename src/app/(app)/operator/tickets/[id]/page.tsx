@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { getTicket, TicketError } from "@/lib/tickets";
 import { TicketStatusBadge } from "@/components/TicketStatusBadge";
 import { TicketView } from "@/app/(app)/_ticket/TicketView";
+import { fmtIsoDate, fmtIsoDateTime } from "@/lib/format";
 import { DraftEditor } from "./DraftEditor";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export default async function OperatorTicketPage({
         <DraftEditor
           id={ticket.id}
           initial={{
-            date: ticket.date.toISOString().slice(0, 10),
+            date: fmtIsoDate(ticket.date),
             brokerName: ticket.brokerName ?? "",
             truckNumber: ticket.truckNumber ?? "",
             licensePlate: ticket.licensePlate ?? "",
@@ -60,14 +61,14 @@ export default async function OperatorTicketPage({
             deliveryLocation: ticket.deliveryLocation ?? "",
             equipmentType: ticket.equipmentType,
             used407ETR: ticket.used407ETR,
-            startTime: ticket.startTime ? toLocalDtInput(ticket.startTime) : "",
-            endTime: ticket.endTime ? toLocalDtInput(ticket.endTime) : "",
+            startTime: fmtIsoDateTime(ticket.startTime),
+            endTime: fmtIsoDateTime(ticket.endTime),
             comments: ticket.comments ?? "",
             materialType: ticket.materialType ?? "",
             issuesNote: ticket.issuesNote ?? "",
             loadEntries: ticket.loadEntries.map((e) => ({
               loadNumber: e.loadNumber,
-              loadTime: e.loadTime ? toLocalDtInput(e.loadTime) : "",
+              loadTime: fmtIsoDateTime(e.loadTime),
               notes: e.notes ?? "",
             })),
             photos: ticket.photos.map((p) => ({
@@ -76,6 +77,7 @@ export default async function OperatorTicketPage({
               originalName: p.originalName,
               byteSize: p.byteSize,
             })),
+            loadsLocked: ticket.dispatchId != null,
           }}
         />
       ) : (
@@ -83,11 +85,6 @@ export default async function OperatorTicketPage({
       )}
     </div>
   );
-}
-
-function toLocalDtInput(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

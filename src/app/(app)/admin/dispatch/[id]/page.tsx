@@ -5,20 +5,14 @@ import { DispatchError, getDispatch } from "@/lib/dispatches";
 import { listOperators } from "@/lib/operators";
 import { listAssignableTrucks } from "@/lib/trucks";
 import { listProjects } from "@/lib/projects";
+import { projectRemainingForDispatch } from "@/lib/dispatch-loads";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
+import { fmtDateTime } from "@/lib/format";
 import { DispatchForm } from "../DispatchForm";
 import { AdminDispatchActions } from "./AdminDispatchActions";
 
 export const dynamic = "force-dynamic";
-
-const fullDtFmt = new Intl.DateTimeFormat("en-CA", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 export default async function DispatchDetailPage({
   params,
@@ -40,6 +34,18 @@ export default async function DispatchDetailPage({
     listOperators(),
     listAssignableTrucks(),
   ]);
+  // Compute per-project remaining pool excluding this dispatch — the form
+  // adds this dispatch's own allocation back so the operator can keep their
+  // current loadsAssigned or raise it without false errors.
+  const projectsWithRemaining = await Promise.all(
+    projects.map(async (p) => ({
+      id: p.id,
+      name: p.name,
+      client: p.client,
+      remaining: await projectRemainingForDispatch(p.id, d.id),
+      hasPins: p.pickupLatitude != null && p.dumpLatitude != null,
+    })),
+  );
 
   // Include the currently-assigned truck even if it's no longer ACTIVE — so
   // the edit form's <select> can render the current choice.
@@ -68,7 +74,7 @@ export default async function DispatchDetailPage({
               {d.project.name}
             </h1>
             <p className="mt-1 text-sm text-zinc-600">
-              {fullDtFmt.format(d.scheduledFor)} &middot; {d.project.client}
+              {fmtDateTime(d.scheduledFor)} &middot; {d.project.client}
             </p>
             {d.project.address ? (
               <p className="text-sm text-zinc-500">{d.project.address}</p>
@@ -82,6 +88,12 @@ export default async function DispatchDetailPage({
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <Info label="Operator" value={d.operator.user.name} sub={d.operator.user.employeeId ?? undefined} />
           <Info label="Truck" value={d.truck.licensePlate} mono sub={d.truck.colour} />
+          <Info
+            label="Loads"
+            value={`${d.loadsCompleted} / ${d.loadsAssigned}`}
+            mono
+            sub={d.loadsCompleted >= d.loadsAssigned ? "all done" : `${d.loadsAssigned - d.loadsCompleted} left`}
+          />
           <Info label="Pickup" value={d.pickupNote ?? "—"} />
           <Info label="Dump" value={d.dumpNote ?? "—"} />
         </dl>
@@ -123,8 +135,9 @@ export default async function DispatchDetailPage({
                 pickupNote: d.pickupNote,
                 dumpNote: d.dumpNote,
                 notes: d.notes,
+                loadsAssigned: d.loadsAssigned,
               }}
-              projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))}
+              projects={projectsWithRemaining}
               operators={operators.map((o) => ({
                 id: o.id,
                 name: o.user.name,

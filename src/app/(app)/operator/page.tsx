@@ -2,9 +2,25 @@ import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { listDispatchesForOperator } from "@/lib/dispatches";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import type { CycleState } from "@/components/GpsSessionLock";
 import { OperatorDispatchCard } from "./OperatorDispatchCard";
 
 export const dynamic = "force-dynamic";
+
+// Derive the cycle state from the dispatch row + its latest load. Kept
+// inline here (rather than dispatch-loads.ts) so the operator page can do
+// it in-memory off the listDispatchesForOperator result without N+1 round
+// trips.
+function deriveCycleState(d: {
+  loadsAssigned: number;
+  loadsCompleted: number;
+  loads: { pickupAt: Date | null; dropoffAt: Date | null }[];
+}): CycleState {
+  if (d.loadsCompleted >= d.loadsAssigned) return "COMPLETED";
+  const latest = d.loads[0] ?? null;
+  if (latest && latest.pickupAt && !latest.dropoffAt) return "AWAITING_DROPOFF";
+  return "AWAITING_PICKUP";
+}
 
 export default async function OperatorPage() {
   const user = await requireUser("OPERATOR");
@@ -57,12 +73,22 @@ export default async function OperatorPage() {
                 acceptance: d.acceptance,
                 status: d.status,
                 flagReason: d.flagReason,
-                project: { name: d.project.name, client: d.project.client },
+                project: {
+                  name: d.project.name,
+                  client: d.project.client,
+                  pickupLat: d.project.pickupLatitude,
+                  pickupLng: d.project.pickupLongitude,
+                  dumpLat: d.project.dumpLatitude,
+                  dumpLng: d.project.dumpLongitude,
+                },
                 truck: { licensePlate: d.truck.licensePlate, colour: d.truck.colour },
                 pickupNote: d.pickupNote,
                 dumpNote: d.dumpNote,
                 notes: d.notes,
                 tripId: d.trip?.endedAt ? null : d.trip?.id ?? null,
+                loadsAssigned: d.loadsAssigned,
+                loadsCompleted: d.loadsCompleted,
+                cycleState: deriveCycleState(d),
               }}
             />
           ))}

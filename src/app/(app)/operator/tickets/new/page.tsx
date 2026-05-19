@@ -86,7 +86,7 @@ export default async function NewTicketPage({
           <NewTicketForm
             dispatches={activeDispatches.map((d) => ({
               id: d.id,
-              label: `${d.project.name} · ${d.truck.licensePlate} · ${d.scheduledFor.toLocaleDateString()}`,
+              label: `${d.project.name} · ${d.truck.licensePlate} · ${d.scheduledFor.toLocaleDateString("en-CA", { timeZone: "America/Toronto" })}`,
             }))}
           />
         </div>

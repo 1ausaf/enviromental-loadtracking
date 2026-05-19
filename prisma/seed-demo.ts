@@ -114,6 +114,8 @@ async function buildDemoData(prisma: PrismaClient) {
 
   // ---- Projects ----
   const today = startOfDay(new Date());
+  // GTA coords so the map picker is useful out-of-the-box for the demo.
+  // Real projects would be pinned by admin via the project form.
   const project1 = await prisma.project.create({
     data: {
       name: "Don Mills Reconstruction — Demo",
@@ -125,6 +127,10 @@ async function buildDemoData(prisma: PrismaClient) {
       loadTarget: 480,
       scheduleNotes: "Mon–Fri 6:30 AM start. Pickup at the Brockton yard.",
       status: "ACTIVE",
+      pickupLatitude: 43.7233,
+      pickupLongitude: -79.3414,
+      dumpLatitude: 43.8255,
+      dumpLongitude: -79.2010,
     },
   });
   const project2 = await prisma.project.create({
@@ -138,6 +144,10 @@ async function buildDemoData(prisma: PrismaClient) {
       loadTarget: 120,
       scheduleNotes: "Open-ended; runs as material becomes available.",
       status: "ACTIVE",
+      pickupLatitude: 43.8553,
+      pickupLongitude: -79.0863,
+      dumpLatitude: 43.9001,
+      dumpLongitude: -79.1102,
     },
   });
   const project3 = await prisma.project.create({
@@ -151,6 +161,10 @@ async function buildDemoData(prisma: PrismaClient) {
       loadTarget: 300,
       scheduleNotes: "Wrapped. Closed out 30 days ago.",
       status: "COMPLETED",
+      pickupLatitude: 43.7615,
+      pickupLongitude: -79.4111,
+      dumpLatitude: 43.8000,
+      dumpLongitude: -79.3000,
     },
   });
 
@@ -556,9 +570,14 @@ type DispatchArgs = {
   notes?: string | null;
   flagReason?: string | null;
   flaggedAt?: Date | null;
+  loadsAssigned?: number;
+  loadsCompleted?: number;
 };
 async function createDispatch(prisma: PrismaClient, a: DispatchArgs) {
-  return prisma.dispatch.create({
+  const loadsAssigned = a.loadsAssigned ?? 1;
+  const loadsCompleted =
+    a.loadsCompleted ?? (a.status === "COMPLETED" ? loadsAssigned : 0);
+  const dispatch = await prisma.dispatch.create({
     data: {
       projectId: a.project.id,
       operatorId: a.operator.id,
@@ -575,8 +594,29 @@ async function createDispatch(prisma: PrismaClient, a: DispatchArgs) {
       startedAt: a.startedAt ?? null,
       completedAt: a.completedAt ?? null,
       createdById: a.createdBy.id,
+      loadsAssigned,
+      loadsCompleted,
     },
   });
+  // For COMPLETED demo dispatches, synthesise DispatchLoad rows so ticket
+  // prefill has something to work with (otherwise the ticket has no loads).
+  if (loadsCompleted > 0 && a.startedAt && a.completedAt) {
+    const totalMs = a.completedAt.getTime() - a.startedAt.getTime();
+    const stepMs = totalMs / Math.max(1, loadsCompleted);
+    await prisma.dispatchLoad.createMany({
+      data: Array.from({ length: loadsCompleted }, (_, i) => {
+        const pickupAt = new Date(a.startedAt!.getTime() + stepMs * i + stepMs * 0.1);
+        const dropoffAt = new Date(a.startedAt!.getTime() + stepMs * (i + 1));
+        return {
+          dispatchId: dispatch.id,
+          loadNumber: i + 1,
+          pickupAt,
+          dropoffAt,
+        };
+      }),
+    });
+  }
+  return dispatch;
 }
 
 async function createTrip(

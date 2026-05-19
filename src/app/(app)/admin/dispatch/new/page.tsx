@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/session";
 import { listProjects } from "@/lib/projects";
 import { listOperators } from "@/lib/operators";
 import { listAssignableTrucks } from "@/lib/trucks";
+import { projectRemainingForDispatch } from "@/lib/dispatch-loads";
 import { DispatchForm } from "../DispatchForm";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,17 @@ export default async function NewDispatchPage() {
     listOperators(),
     listAssignableTrucks(),
   ]);
+  // Compute remaining pool per project so the form can disable projects with
+  // no loads left and surface the cap.
+  const projectsWithRemaining = await Promise.all(
+    projects.map(async (p) => ({
+      id: p.id,
+      name: p.name,
+      client: p.client,
+      remaining: await projectRemainingForDispatch(p.id),
+      hasPins: p.pickupLatitude != null && p.dumpLatitude != null,
+    })),
+  );
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
@@ -45,7 +57,7 @@ export default async function NewDispatchPage() {
           ) : (
             <DispatchForm
               mode="create"
-              projects={projects.map((p) => ({ id: p.id, name: p.name, client: p.client }))}
+              projects={projectsWithRemaining}
               operators={operators.map((o) => ({
                 id: o.id,
                 name: o.user.name,

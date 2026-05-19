@@ -4,15 +4,17 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { DispatchAcceptance, DispatchStatus } from "@/generated/prisma/client";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
-import { GpsSessionLock, type LockAdvanceAction } from "@/components/GpsSessionLock";
+import { GpsSessionLock, type CycleState } from "@/components/GpsSessionLock";
 import { useGpsTracker } from "@/components/useGpsTracker";
+import { fmtDateTime } from "@/lib/format";
 import {
   acceptDispatchAction,
-  advanceDispatchAction,
+  confirmDropoffAction,
+  confirmPickupAction,
   flagDispatchAction,
   startDispatchAction,
 } from "./actions";
-import { completeLoadAction } from "./tickets/actions";
+import { findTicketForCompletedDispatchAction } from "./tickets/actions";
 
 type CardData = {
   id: string;
@@ -20,12 +22,22 @@ type CardData = {
   acceptance: DispatchAcceptance;
   status: DispatchStatus;
   flagReason: string | null;
-  project: { name: string; client: string };
+  project: {
+    name: string;
+    client: string;
+    pickupLat: number | null;
+    pickupLng: number | null;
+    dumpLat: number | null;
+    dumpLng: number | null;
+  };
   truck: { licensePlate: string; colour: string };
   pickupNote: string | null;
   dumpNote: string | null;
   notes: string | null;
   tripId: string | null; // present + active while haul is in progress
+  loadsAssigned: number;
+  loadsCompleted: number;
+  cycleState: CycleState;
 };
 
 const TRIP_ACTIVE = new Set<DispatchStatus>([
@@ -34,20 +46,8 @@ const TRIP_ACTIVE = new Set<DispatchStatus>([
   "EN_ROUTE_TO_DUMP",
 ]);
 
-const fullDtFmt = new Intl.DateTimeFormat("en-CA", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
 // EN_ROUTE_TO_DUMP gets its own button (Complete Load) — the other two
 // forward transitions share the generic advance label.
-const ADVANCE_LABEL: Partial<Record<DispatchStatus, string>> = {
-  EN_ROUTE_TO_PICKUP: "Arrived at pickup",
-  LOADING: "Loaded, en route to dump",
-};
 
 export function OperatorDispatchCard({ data }: { data: CardData }) {
   const router = useRouter();
@@ -56,16 +56,17 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // GPS lifts to the card so the Start button can gate on hasFix AND the
-  // lock overlay shares the same hook instance once the trip starts.
-  // Pre-Start there's no tripId — the hook still runs the permission flow
-  // (so we can light up Start as soon as the OS reports a fix) but drops
-  // any queued samples.
   const isTripActive = TRIP_ACTIVE.has(data.status) && !!data.tripId;
   const gps = useGpsTracker({
     tripId: data.tripId,
     mode: isTripActive ? "lock" : "background",
   });
+
+  const hasPins =
+    data.project.pickupLat != null &&
+    data.project.pickupLng != null &&
+    data.project.dumpLat != null &&
+    data.project.dumpLng != null;
 
   function run(fn: () => Promise<{ error?: string }>) {
     setError(null);
@@ -75,46 +76,71 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
     });
   }
 
-  // Wraps a server action so we capture the operator's exact lat/lng at the
-  // moment of click into the trip's GPS trail. Admins replaying the trip see
-  // a pin at the click instant for every status transition.
-  function runWithPin(fn: () => Promise<{ error?: string }>) {
+  // Wraps Start so the GPS pin captures the exact location at the moment of
+  // tap (admins replaying the trip see a point at trip-start time).
+  function startTrip() {
     setError(null);
     start(async () => {
       await gps.captureNow();
-      const res = await fn();
+      const res = await startDispatchAction(data.id);
       if (res.error) setError(res.error);
     });
   }
 
-  function completeLoad() {
+  function confirmPickup() {
     setError(null);
     start(async () => {
-      await gps.captureNow();
-      const res = await completeLoadAction(data.id);
-      if (res.error) setError(res.error);
-      else if (res.ticketId) router.push(`/operator/tickets/${res.ticketId}`);
-    });
-  }
-
-  // While in an active trip, take over the viewport with the lock overlay.
-  // The normal card still renders behind it (for layout continuity when the
-  // trip ends) but it's hidden by the fixed-position overlay.
-  const lockAdvance: LockAdvanceAction | null = ADVANCE_LABEL[data.status]
-    ? {
-        label: ADVANCE_LABEL[data.status]!,
-        tone: "primary",
-        onClick: () => runWithPin(() => advanceDispatchAction(data.id)),
+      const pos = await gps.captureNow();
+      if (!pos) {
+        setError("Couldn't read your location — wait for GPS to settle and try again.");
+        return;
       }
-    : null;
-  const lockCompleteLoad: LockAdvanceAction | null =
-    data.status === "EN_ROUTE_TO_DUMP"
-      ? {
-          label: "Complete Load",
-          tone: "success",
-          onClick: completeLoad,
-        }
-      : null;
+      const res = await confirmPickupAction(data.id, {
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy,
+      });
+      if (res.error) setError(res.error);
+      else router.refresh();
+    });
+  }
+
+  function confirmDropoff() {
+    setError(null);
+    start(async () => {
+      const pos = await gps.captureNow();
+      if (!pos) {
+        setError("Couldn't read your location — wait for GPS to settle and try again.");
+        return;
+      }
+      const res = await confirmDropoffAction(data.id, {
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracy: pos.accuracy,
+      });
+      if (res.error) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+      // If that was the last load, the dispatch is now COMPLETED. Auto-open
+      // the prefilled ticket so the operator finishes without an extra tap.
+      if (res.complete) {
+        const r = await findTicketForCompletedDispatchAction(data.id);
+        if (r.ticketId) router.push(`/operator/tickets/${r.ticketId}`);
+        else if (r.error) setError(r.error);
+      }
+    });
+  }
+
+  function openTicketAfterComplete() {
+    setError(null);
+    start(async () => {
+      const r = await findTicketForCompletedDispatchAction(data.id);
+      if (r.ticketId) router.push(`/operator/tickets/${r.ticketId}`);
+      else if (r.error) setError(r.error);
+    });
+  }
 
   return (
     <>
@@ -122,10 +148,25 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
         <GpsSessionLock
           status={gps.status}
           dispatchStatus={data.status}
-          project={data.project}
+          cycleState={data.cycleState}
+          loadsCompleted={data.loadsCompleted}
+          loadsAssigned={data.loadsAssigned}
+          pickupCoord={
+            data.project.pickupLat != null && data.project.pickupLng != null
+              ? { lat: data.project.pickupLat, lng: data.project.pickupLng }
+              : null
+          }
+          dumpCoord={
+            data.project.dumpLat != null && data.project.dumpLng != null
+              ? { lat: data.project.dumpLat, lng: data.project.dumpLng }
+              : null
+          }
+          project={{ name: data.project.name, client: data.project.client }}
           truck={data.truck}
-          advance={lockAdvance}
-          completeLoad={lockCompleteLoad}
+          lastPosition={gps.lastPosition}
+          onConfirmPickup={confirmPickup}
+          onConfirmDropoff={confirmDropoff}
+          onOpenTicket={openTicketAfterComplete}
           pending={pending}
           error={error}
         />
@@ -139,7 +180,7 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
             </div>
             <div className="text-xs text-zinc-500">{data.project.client}</div>
             <div className="mt-1 text-sm text-zinc-700">
-              {fullDtFmt.format(new Date(data.scheduledFor))}
+              {fmtDateTime(data.scheduledFor)}
             </div>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -151,6 +192,8 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
         <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
           <Info label="Truck" value={data.truck.licensePlate} mono />
           <Info label="Colour" value={data.truck.colour} />
+          <Info label="Loads" value={`${data.loadsCompleted} / ${data.loadsAssigned}`} mono />
+          <Info label="Status" value={cycleStateLabel(data.cycleState)} />
           <Info label="Pickup" value={data.pickupNote ?? "—"} />
           <Info label="Dump" value={data.dumpNote ?? "—"} />
         </dl>
@@ -173,10 +216,15 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
           </div>
         ) : null}
 
-        {/* GPS gate — required before Start. Block all status advances until
-            we have a live fix. Once the trip is active the lock overlay
-            replaces this card so this section is hidden. */}
-        {data.acceptance === "ACCEPTED" && data.status === "IDLE" ? (
+        {!hasPins ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+            ⚠ This project doesn&apos;t have pickup / dump pins set yet. Ask
+            an admin to drop them on the project page before you can start.
+          </div>
+        ) : null}
+
+        {/* GPS gate — required before Start. */}
+        {data.acceptance === "ACCEPTED" && data.status === "IDLE" && hasPins ? (
           <GpsGate gps={gps} />
         ) : null}
 
@@ -206,9 +254,15 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
           {data.acceptance === "ACCEPTED" && data.status === "IDLE" ? (
             <button
               type="button"
-              disabled={pending || !gps.hasFix}
-              onClick={() => runWithPin(() => startDispatchAction(data.id))}
-              title={gps.hasFix ? undefined : "Enable GPS tracking before starting the haul."}
+              disabled={pending || !gps.hasFix || !hasPins}
+              onClick={startTrip}
+              title={
+                !hasPins
+                  ? "This project has no pickup/dump pins yet."
+                  : gps.hasFix
+                    ? undefined
+                    : "Enable GPS tracking before starting the haul."
+              }
               className="inline-flex h-11 items-center rounded-md bg-zinc-900 px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Start
@@ -216,9 +270,14 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
           ) : null}
 
           {data.status === "COMPLETED" ? (
-            <span className="self-center text-xs text-emerald-700">
-              Completed — finish the ticket in My tickets.
-            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={openTicketAfterComplete}
+              className="inline-flex h-11 items-center rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {pending ? "Opening ticket…" : "Open ticket"}
+            </button>
           ) : null}
         </div>
 
@@ -271,6 +330,17 @@ export function OperatorDispatchCard({ data }: { data: CardData }) {
   );
 }
 
+function cycleStateLabel(s: CycleState): string {
+  switch (s) {
+    case "AWAITING_PICKUP":
+      return "Heading to pickup";
+    case "AWAITING_DROPOFF":
+      return "Carrying load";
+    case "COMPLETED":
+      return "All loads delivered";
+  }
+}
+
 function GpsGate({ gps }: { gps: ReturnType<typeof useGpsTracker> }) {
   const s = gps.status;
   if (s.kind === "running" && gps.hasFix) {
@@ -287,7 +357,8 @@ function GpsGate({ gps }: { gps: ReturnType<typeof useGpsTracker> }) {
   if (s.kind === "requesting") {
     return (
       <div className="mt-4 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-        📍 Waiting for location permission… (check the browser prompt)
+        📍 Waiting for location permission… (check the browser prompt). The
+        screen will refresh automatically once you allow.
       </div>
     );
   }
@@ -296,7 +367,9 @@ function GpsGate({ gps }: { gps: ReturnType<typeof useGpsTracker> }) {
       <div className="mt-4 space-y-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
         <div>⚠ {s.reason}</div>
         <div className="text-xs">
-          GPS tracking is required before you can begin this haul.
+          GPS tracking is required before you can begin this haul. After
+          allowing in your browser settings, this screen will pick it up
+          automatically — no need to reload.
         </div>
         <button
           type="button"
@@ -308,7 +381,6 @@ function GpsGate({ gps }: { gps: ReturnType<typeof useGpsTracker> }) {
       </div>
     );
   }
-  // needsPermission (or running without fix yet)
   return (
     <div className="mt-4 space-y-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">
       <div>📍 GPS tracking is required for this haul. Tap below to enable it.</div>

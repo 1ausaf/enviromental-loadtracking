@@ -180,9 +180,18 @@ model Project {
   startDate       DateTime
   endDate         DateTime?
   materialBudget  Float         // currency (CAD); unit-agnostic per proposal §2.4
-  loadTarget      Int           // number of loads to complete
+  loadTarget      Int           // total loads across all dispatches (admin sets at creation)
   scheduleNotes   String?       // free-text shift / schedule notes
   status          ProjectStatus @default(ACTIVE)
+
+  // Geofence coordinates set by admin via map pin (Leaflet + OSM). Required
+  // before any dispatch on the project can be started — the operator's
+  // browser uses these to auto-trigger pickup / drop confirmation prompts.
+  pickupLatitude   Float?
+  pickupLongitude  Float?
+  dumpLatitude     Float?
+  dumpLongitude    Float?
+
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -202,8 +211,8 @@ model Dispatch {
   operatorId    String              // refs Operator.id
   truckId       String
   scheduledFor  DateTime            // when the haul is planned to run
-  pickupNote    String?             // free-text pickup site / address
-  dumpNote      String?             // free-text dump site / address
+  pickupNote    String?             // free-text pickup site / address (display only — geofence reads Project coords)
+  dumpNote      String?             // free-text dump site / address (display only)
   notes         String?             // free-text admin notes
 
   // Acceptance — proposal §2.6 ("Accept" or "Flag an Issue")
@@ -212,11 +221,20 @@ model Dispatch {
   flagReason    String?
   flaggedAt     DateTime?
 
-  // Live status — proposal §2.6 dispatch board
+  // Live status — proposal §2.6 dispatch board. With the new geofence flow
+  // EN_ROUTE_TO_PICKUP and EN_ROUTE_TO_DUMP are toggled automatically based
+  // on the latest DispatchLoad state. LOADING is unused (legacy).
   status        DispatchStatus      @default(IDLE)
-  startedAt     DateTime?           // Phase 6 wires GPS sampling here
+  startedAt     DateTime?
   completedAt   DateTime?
   cancelledAt   DateTime?
+
+  // Load tracking. loadsAssigned = how many loads admin assigned to this
+  // operator out of the project's pool (sum across dispatches ≤ project.loadTarget).
+  // loadsCompleted is incremented on each confirmed drop-off; when it hits
+  // loadsAssigned the dispatch auto-transitions to COMPLETED.
+  loadsAssigned   Int               @default(1)
+  loadsCompleted  Int               @default(0)
 
   createdById   String
   createdAt     DateTime            @default(now())
@@ -229,6 +247,7 @@ model Dispatch {
   trip          Trip?
   ticket        Ticket?
   exceptions    Exception[]
+  loads         DispatchLoad[]
 
   @@index([scheduledFor])
   @@index([projectId, scheduledFor])
@@ -236,6 +255,35 @@ model Dispatch {
   @@index([truckId])
   @@index([status])
   @@index([acceptance])
+}
+
+// One row per pickup→drop cycle within a dispatch. Pickup is recorded when
+// the operator taps "PICK UP LOAD" inside the geofence; drop is recorded
+// when they confirm at the dump geofence. A row is "complete" once
+// dropoffAt is set; counting complete rows == dispatch.loadsCompleted.
+// loadNumber is 1-based and unique per dispatch — drives ticket prefill so
+// the load entries column matches the geofence-detected sequence.
+model DispatchLoad {
+  id              String    @id @default(cuid())
+  dispatchId      String
+  loadNumber      Int
+
+  pickupAt        DateTime?
+  pickupLatitude  Float?
+  pickupLongitude Float?
+  pickupAccuracy  Float?
+
+  dropoffAt        DateTime?
+  dropoffLatitude  Float?
+  dropoffLongitude Float?
+  dropoffAccuracy  Float?
+
+  createdAt       DateTime  @default(now())
+
+  dispatch        Dispatch  @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+
+  @@unique([dispatchId, loadNumber])
+  @@index([dispatchId])
 }
 
 // GPS trip per proposal §2.5. 1:1 with a dispatch — created on Start,

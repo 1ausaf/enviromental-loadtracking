@@ -14,6 +14,7 @@ type Doc = {
 };
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   year: "numeric",
   month: "short",
   day: "numeric",

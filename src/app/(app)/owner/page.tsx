@@ -17,6 +17,7 @@ const TYPES: ExceptionType[] = [
 ];
 
 const dtFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   month: "short",
   day: "numeric",
   hour: "numeric",

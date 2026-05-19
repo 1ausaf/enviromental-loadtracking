@@ -23,6 +23,13 @@ export type CreateProjectInput = {
   loadTarget: number;
   scheduleNotes: string | null;
   status?: ProjectStatus;
+  // Geofence coords for the operator's pickup / drop confirmation flow.
+  // Nullable so admins can save a project before dropping pins, but then
+  // operators can't start any dispatch on it until coords are set.
+  pickupLatitude?: number | null;
+  pickupLongitude?: number | null;
+  dumpLatitude?: number | null;
+  dumpLongitude?: number | null;
 };
 
 export type UpdateProjectInput = Partial<CreateProjectInput>;
@@ -51,6 +58,37 @@ function validate(input: CreateProjectInput | UpdateProjectInput): void {
   ) {
     throw new ProjectError("BAD_REQUEST", "End date must be on or after the start date.");
   }
+  for (const [key, label] of [
+    ["pickupLatitude", "Pickup latitude"],
+    ["dumpLatitude", "Dump latitude"],
+  ] as const) {
+    const v = input[key];
+    if (v !== undefined && v !== null && (!Number.isFinite(v) || v < -90 || v > 90)) {
+      throw new ProjectError("BAD_REQUEST", `${label} must be between -90 and 90.`);
+    }
+  }
+  for (const [key, label] of [
+    ["pickupLongitude", "Pickup longitude"],
+    ["dumpLongitude", "Dump longitude"],
+  ] as const) {
+    const v = input[key];
+    if (v !== undefined && v !== null && (!Number.isFinite(v) || v < -180 || v > 180)) {
+      throw new ProjectError("BAD_REQUEST", `${label} must be between -180 and 180.`);
+    }
+  }
+  // Coords come in pairs — both lat AND lng or neither.
+  if (
+    (input.pickupLatitude != null && input.pickupLongitude == null) ||
+    (input.pickupLatitude == null && input.pickupLongitude != null)
+  ) {
+    throw new ProjectError("BAD_REQUEST", "Pickup pin must have both latitude and longitude.");
+  }
+  if (
+    (input.dumpLatitude != null && input.dumpLongitude == null) ||
+    (input.dumpLatitude == null && input.dumpLongitude != null)
+  ) {
+    throw new ProjectError("BAD_REQUEST", "Dump pin must have both latitude and longitude.");
+  }
 }
 
 export async function createProject(input: CreateProjectInput) {
@@ -66,6 +104,10 @@ export async function createProject(input: CreateProjectInput) {
       loadTarget: input.loadTarget,
       scheduleNotes: input.scheduleNotes?.trim() || null,
       status: input.status ?? "ACTIVE",
+      pickupLatitude: input.pickupLatitude ?? null,
+      pickupLongitude: input.pickupLongitude ?? null,
+      dumpLatitude: input.dumpLatitude ?? null,
+      dumpLongitude: input.dumpLongitude ?? null,
     },
   });
 }
@@ -82,6 +124,10 @@ export async function updateProject(id: string, input: UpdateProjectInput) {
   if (input.loadTarget !== undefined) data.loadTarget = input.loadTarget;
   if (input.scheduleNotes !== undefined) data.scheduleNotes = input.scheduleNotes?.trim() || null;
   if (input.status !== undefined) data.status = input.status;
+  if (input.pickupLatitude !== undefined) data.pickupLatitude = input.pickupLatitude;
+  if (input.pickupLongitude !== undefined) data.pickupLongitude = input.pickupLongitude;
+  if (input.dumpLatitude !== undefined) data.dumpLatitude = input.dumpLatitude;
+  if (input.dumpLongitude !== undefined) data.dumpLongitude = input.dumpLongitude;
   try {
     return await prisma.project.update({ where: { id }, data });
   } catch (e) {

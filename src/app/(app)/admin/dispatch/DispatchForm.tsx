@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { truckTypeLabel } from "@/components/TruckBadges";
 import type { TruckType } from "@/generated/prisma/client";
 import {
@@ -13,7 +13,13 @@ import {
 const CREATE_INITIAL: CreateDispatchState = { status: "idle" };
 const EDIT_INITIAL: EditDispatchState = { status: "idle" };
 
-type ProjectOpt = { id: string; name: string; client: string };
+type ProjectOpt = {
+  id: string;
+  name: string;
+  client: string;
+  remaining: number;
+  hasPins: boolean;
+};
 type OperatorOpt = { id: string; name: string; employeeId: string | null; isActive: boolean };
 type TruckOpt = { id: string; licensePlate: string; type: TruckType };
 
@@ -25,13 +31,13 @@ type Initial = {
   pickupNote: string | null;
   dumpNote: string | null;
   notes: string | null;
+  loadsAssigned: number;
 };
 
 function tomorrow8amLocal(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   d.setHours(8, 0, 0, 0);
-  // datetime-local expects "YYYY-MM-DDTHH:mm" in local time.
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -83,6 +89,22 @@ function Body({
 
   const defaultScheduled = initial ? toDtLocal(initial.scheduledFor) : tomorrow8amLocal();
 
+  // Live project selection so we can show "X loads available" + warn on
+  // missing pins. The remaining count from the server doesn't account for
+  // edits made in this same form (e.g. lowering loadsAssigned of an
+  // existing dispatch frees up pool) but the server validates on submit.
+  const [projectId, setProjectId] = useState(initial?.projectId ?? "");
+  const currentProject = useMemo(
+    () => projects.find((p) => p.id === projectId) ?? null,
+    [projectId, projects],
+  );
+  // In edit mode the project's "remaining" excludes other dispatches but
+  // INCLUDES this dispatch (the API does the right thing on submit), so
+  // the displayed cap is remaining + this dispatch's current allocation.
+  const effectiveRemaining = currentProject
+    ? currentProject.remaining + (mode === "edit" ? initial?.loadsAssigned ?? 0 : 0)
+    : 0;
+
   return (
     <form action={action} className="space-y-4">
       <div>
@@ -93,16 +115,24 @@ function Body({
           id="projectId"
           name="projectId"
           required
-          defaultValue={initial?.projectId ?? ""}
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
           className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
         >
           {!initial ? <option value="">— Pick a project —</option> : null}
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>
+            <option key={p.id} value={p.id} disabled={!p.hasPins || (p.remaining <= 0 && !initial)}>
               {p.name} — {p.client}
+              {!p.hasPins ? "  (no pickup/dump pins yet)" : ""}
+              {p.hasPins ? `  (${p.remaining} loads left)` : ""}
             </option>
           ))}
         </select>
+        {currentProject && !currentProject.hasPins ? (
+          <p className="mt-1 text-xs text-amber-800">
+            ⚠ This project has no pickup or dump pins. Set them on the project page first.
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -170,18 +200,40 @@ function Body({
         </p>
       </div>
 
+      <div>
+        <label htmlFor="loadsAssigned" className="mb-1 block text-sm font-medium text-zinc-900">
+          Loads assigned to this operator
+        </label>
+        <input
+          id="loadsAssigned"
+          name="loadsAssigned"
+          type="number"
+          step="1"
+          min="1"
+          max={currentProject ? effectiveRemaining : undefined}
+          required
+          defaultValue={initial?.loadsAssigned ?? 1}
+          className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+        />
+        <p className="mt-1 text-xs text-zinc-500">
+          {currentProject
+            ? `${effectiveRemaining} load${effectiveRemaining === 1 ? "" : "s"} left in this project's pool.`
+            : "Pick a project to see how many loads are still unassigned."}
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field
           id="pickupNote"
-          label="Pickup site (optional)"
+          label="Pickup site notes (optional)"
           defaultValue={initial?.pickupNote ?? ""}
-          placeholder="e.g. 1500 Don Mills Rd, gate B"
+          placeholder="e.g. gate B, ask for John"
         />
         <Field
           id="dumpNote"
-          label="Dump site (optional)"
+          label="Dump site notes (optional)"
           defaultValue={initial?.dumpNote ?? ""}
-          placeholder="e.g. Brock Road landfill"
+          placeholder="e.g. drop on the south pile"
         />
       </div>
 

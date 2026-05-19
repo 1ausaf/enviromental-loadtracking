@@ -7,20 +7,9 @@ import { listDispatchesForOperator } from "@/lib/dispatches";
 import { listTicketsForOperator } from "@/lib/tickets";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
 import { TicketStatusBadge } from "@/components/TicketStatusBadge";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-const dtFmt = new Intl.DateTimeFormat("en-CA", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-const dateFmt = new Intl.DateTimeFormat("en-CA", {
-  month: "short",
-  day: "numeric",
-});
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -109,7 +98,7 @@ export default async function DashboardPage() {
             {next.project.name}
           </div>
           <div className="mt-1 text-base text-slate-700">
-            {dtFmt.format(next.scheduledFor)}
+            {fmtDateTime(next.scheduledFor)}
           </div>
           <div className="mt-1 text-base text-slate-600">
             <span className="font-mono">{next.truck.licensePlate}</span>
@@ -158,7 +147,7 @@ export default async function DashboardPage() {
                     <TicketStatusBadge status={t.status} />
                   </div>
                   <div className="mt-1 text-sm text-slate-600">
-                    {dateFmt.format(t.date)} ·{" "}
+                    {fmtDate(t.date)} ·{" "}
                     {t.project?.name ?? "no project"}
                   </div>
                 </Link>

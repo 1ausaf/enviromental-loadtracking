@@ -5,6 +5,7 @@ import { listProjects } from "@/lib/projects";
 import type { DispatchAcceptance, DispatchStatus } from "@/generated/prisma/client";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { AcceptanceBadge, StatusBadge } from "@/components/DispatchBadges";
+import { fmtDateTime } from "@/lib/format";
 import { DispatchBoardFilters } from "./DispatchBoardFilters";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +19,6 @@ const STATUS_VALUES: DispatchStatus[] = [
   "COMPLETED",
   "CANCELLED",
 ];
-
-const dtFmt = new Intl.DateTimeFormat("en-CA", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 export default async function DispatchBoardPage({
   searchParams,
@@ -110,6 +104,7 @@ export default async function DispatchBoardPage({
               <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Operator</th>
               <th className="px-4 py-3 hidden md:table-cell">Truck</th>
+              <th className="px-4 py-3 text-right">Loads</th>
               <th className="px-4 py-3">Acceptance</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3 text-right">Open</th>
@@ -118,7 +113,7 @@ export default async function DispatchBoardPage({
           <tbody className="divide-y divide-zinc-200">
             {dispatches.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-zinc-500">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-500">
                   No dispatches match these filters.{" "}
                   <Link href="/admin/dispatch/new" className="underline hover:text-zinc-900">
                     Schedule one
@@ -130,7 +125,7 @@ export default async function DispatchBoardPage({
               dispatches.map((d) => (
                 <tr key={d.id}>
                   <td className="whitespace-nowrap px-4 py-3 text-zinc-700">
-                    {dtFmt.format(d.scheduledFor)}
+                    {fmtDateTime(d.scheduledFor)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-zinc-900">{d.project.name}</div>
@@ -144,6 +139,9 @@ export default async function DispatchBoardPage({
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 font-mono text-zinc-700 md:table-cell">
                     {d.truck.licensePlate}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-zinc-700">
+                    {d.loadsCompleted} / {d.loadsAssigned}
                   </td>
                   <td className="px-4 py-3">
                     <AcceptanceBadge value={d.acceptance} />

@@ -27,6 +27,9 @@ export type CreateDispatchInput = {
   pickupNote?: string | null;
   dumpNote?: string | null;
   notes?: string | null;
+  // How many of the project's loadTarget pool to assign to this operator.
+  // Validated against the remaining pool at create time.
+  loadsAssigned?: number;
 };
 
 export async function createDispatch(
@@ -68,6 +71,23 @@ export async function createDispatch(
     );
   }
 
+  const loadsAssigned = input.loadsAssigned ?? 1;
+  if (!Number.isInteger(loadsAssigned) || loadsAssigned < 1) {
+    throw new DispatchError("BAD_REQUEST", "Loads must be a whole number ≥ 1.");
+  }
+  // Make sure the project pool can cover it.
+  const otherAssigned = await prisma.dispatch.aggregate({
+    where: { projectId: input.projectId, status: { not: "CANCELLED" } },
+    _sum: { loadsAssigned: true },
+  });
+  const remaining = project.loadTarget - (otherAssigned._sum.loadsAssigned ?? 0);
+  if (loadsAssigned > remaining) {
+    throw new DispatchError(
+      "BAD_REQUEST",
+      `Only ${remaining} loads left in the project pool — can't assign ${loadsAssigned}.`,
+    );
+  }
+
   return prisma.dispatch.create({
     data: {
       projectId: input.projectId,
@@ -77,6 +97,7 @@ export async function createDispatch(
       pickupNote: input.pickupNote?.trim() || null,
       dumpNote: input.dumpNote?.trim() || null,
       notes: input.notes?.trim() || null,
+      loadsAssigned,
       createdById,
     },
   });
@@ -90,6 +111,7 @@ export type UpdateDispatchInput = Partial<{
   pickupNote: string | null;
   dumpNote: string | null;
   notes: string | null;
+  loadsAssigned: number;
 }>;
 
 export async function updateDispatch(id: string, input: UpdateDispatchInput) {
@@ -109,6 +131,30 @@ export async function updateDispatch(id: string, input: UpdateDispatchInput) {
   if (input.pickupNote !== undefined) data.pickupNote = input.pickupNote?.trim() || null;
   if (input.dumpNote !== undefined) data.dumpNote = input.dumpNote?.trim() || null;
   if (input.notes !== undefined) data.notes = input.notes?.trim() || null;
+  if (input.loadsAssigned !== undefined) {
+    if (!Number.isInteger(input.loadsAssigned) || input.loadsAssigned < 1) {
+      throw new DispatchError("BAD_REQUEST", "Loads must be a whole number ≥ 1.");
+    }
+    // Re-check the project pool excluding this dispatch's current allocation.
+    const projectId = input.projectId ?? current.projectId;
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { loadTarget: true },
+    });
+    if (!project) throw new DispatchError("NOT_FOUND", "Project not found.");
+    const otherAssigned = await prisma.dispatch.aggregate({
+      where: { projectId, id: { not: id }, status: { not: "CANCELLED" } },
+      _sum: { loadsAssigned: true },
+    });
+    const remaining = project.loadTarget - (otherAssigned._sum.loadsAssigned ?? 0);
+    if (input.loadsAssigned > remaining) {
+      throw new DispatchError(
+        "BAD_REQUEST",
+        `Only ${remaining} loads left in the project pool — can't assign ${input.loadsAssigned}.`,
+      );
+    }
+    data.loadsAssigned = input.loadsAssigned;
+  }
   return prisma.dispatch.update({ where: { id }, data });
 }
 
@@ -198,7 +244,9 @@ export async function flagDispatch(
 }
 
 // Operator "Start" — transitions to EN_ROUTE_TO_PICKUP and opens a Trip
-// row that the browser starts feeding GPS samples into (Phase 6).
+// row that the browser starts feeding GPS samples into. Refuses to start
+// if the project's pickup/dump pins aren't set (no geofence to detect
+// pickups/drops against) or if there are no loads to do.
 export async function startDispatch(operatorId: string, dispatchId: string): Promise<void> {
   const d = await loadOwnDispatch(operatorId, dispatchId);
   if (d.acceptance !== "ACCEPTED") {
@@ -206,6 +254,19 @@ export async function startDispatch(operatorId: string, dispatchId: string): Pro
   }
   if (d.status !== "IDLE") {
     throw new DispatchError("INVALID_STATE", "Trip already started.");
+  }
+  if (d.loadsAssigned <= d.loadsCompleted) {
+    throw new DispatchError("INVALID_STATE", "No loads remaining on this dispatch.");
+  }
+  const project = await prisma.project.findUnique({
+    where: { id: d.projectId },
+    select: { pickupLatitude: true, dumpLatitude: true },
+  });
+  if (!project || project.pickupLatitude == null || project.dumpLatitude == null) {
+    throw new DispatchError(
+      "BAD_REQUEST",
+      "This project has no pickup/dump pins yet — ask an admin to set them on the project page.",
+    );
   }
   await prisma.$transaction(async (tx) => {
     await tx.dispatch.update({
@@ -311,8 +372,30 @@ export async function listDispatchesForOperator(operatorId: string) {
     ],
     include: {
       ...dispatchInclude,
+      // Include project coords so the operator's browser can geofence
+      // pickup / drop without a second round-trip.
+      project: {
+        select: {
+          id: true,
+          name: true,
+          client: true,
+          address: true,
+          status: true,
+          pickupLatitude: true,
+          pickupLongitude: true,
+          dumpLatitude: true,
+          dumpLongitude: true,
+        },
+      },
       // Trip id lets the operator's browser POST GPS samples to /api/trips/[id]/points.
       trip: { select: { id: true, endedAt: true } },
+      // Latest load row so the page can compute cycle state without a
+      // follow-up query per dispatch.
+      loads: {
+        orderBy: { loadNumber: "desc" },
+        take: 1,
+        select: { loadNumber: true, pickupAt: true, dropoffAt: true },
+      },
     },
     take: 50,
   });

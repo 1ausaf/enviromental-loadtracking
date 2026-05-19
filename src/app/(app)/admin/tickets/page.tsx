@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 const STATUSES: TicketStatus[] = ["DRAFT", "SUBMITTED", "APPROVED", "FLAGGED"];
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   year: "numeric",
   month: "short",
   day: "numeric",

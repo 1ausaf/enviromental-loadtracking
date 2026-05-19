@@ -39,6 +39,17 @@ function parseNumber(raw: FormDataEntryValue | null, label: string): number {
   return n;
 }
 
+// MapPicker emits empty strings when the pin is cleared; treat that as null
+// rather than throwing on Number("") = 0.
+function parseOptionalCoord(raw: FormDataEntryValue | null, label: string): number | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (s === "") return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) throw new ProjectError("BAD_REQUEST", `${label} must be a number.`);
+  return n;
+}
+
 function parseStatus(raw: FormDataEntryValue | null): ProjectStatus {
   if (typeof raw === "string" && (STATUSES as string[]).includes(raw)) {
     return raw as ProjectStatus;
@@ -67,6 +78,10 @@ export async function createProjectAction(
       loadTarget: Math.trunc(parseNumber(formData.get("loadTarget"), "Load target")),
       scheduleNotes: String(formData.get("scheduleNotes") ?? "") || null,
       status: parseStatus(formData.get("status")),
+      pickupLatitude: parseOptionalCoord(formData.get("pickupLatitude"), "Pickup latitude"),
+      pickupLongitude: parseOptionalCoord(formData.get("pickupLongitude"), "Pickup longitude"),
+      dumpLatitude: parseOptionalCoord(formData.get("dumpLatitude"), "Dump latitude"),
+      dumpLongitude: parseOptionalCoord(formData.get("dumpLongitude"), "Dump longitude"),
     });
   } catch (e) {
     if (e instanceof ProjectError) return { status: "error", error: e.message };
@@ -98,6 +113,10 @@ export async function updateProjectAction(
       loadTarget: Math.trunc(parseNumber(formData.get("loadTarget"), "Load target")),
       scheduleNotes: String(formData.get("scheduleNotes") ?? "") || null,
       status: parseStatus(formData.get("status")),
+      pickupLatitude: parseOptionalCoord(formData.get("pickupLatitude"), "Pickup latitude"),
+      pickupLongitude: parseOptionalCoord(formData.get("pickupLongitude"), "Pickup longitude"),
+      dumpLatitude: parseOptionalCoord(formData.get("dumpLatitude"), "Dump latitude"),
+      dumpLongitude: parseOptionalCoord(formData.get("dumpLongitude"), "Dump longitude"),
     });
   } catch (e) {
     if (e instanceof ProjectError) return { status: "error", error: e.message };

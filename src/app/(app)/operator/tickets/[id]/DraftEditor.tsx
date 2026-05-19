@@ -41,6 +41,11 @@ type Initial = {
   issuesNote: string;
   loadEntries: LoadRow[];
   photos: PhotoEntry[];
+  // When the ticket was auto-created from a dispatch, the load count + times
+  // come from the geofence flow's DispatchLoad rows. UI locks the count /
+  // time fields and only lets the operator edit notes (and surface the
+  // disabled state visually so it's obvious).
+  loadsLocked: boolean;
 };
 
 export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
@@ -156,10 +161,18 @@ export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
         </Section>
 
         <Section title="Loads">
+          {initial.loadsLocked ? (
+            <div className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              🔒 These loads were auto-detected by GPS during your haul.
+              Counts and times are locked — you can only edit notes.
+            </div>
+          ) : null}
           <ul className="space-y-2">
             {loads.length === 0 ? (
               <li className="rounded-md border border-dashed border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-500">
-                No loads yet. Add one for each trip you make.
+                {initial.loadsLocked
+                  ? "No completed loads were recorded for this haul."
+                  : "No loads yet. Add one for each trip you make."}
               </li>
             ) : null}
             {loads.map((l, i) => (
@@ -169,14 +182,16 @@ export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
                   min={1}
                   value={l.loadNumber}
                   onChange={(e) => setLoadField(i, "loadNumber", Number(e.target.value))}
-                  className="col-span-2 h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  disabled={initial.loadsLocked}
+                  className="col-span-2 h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900 disabled:cursor-not-allowed disabled:bg-zinc-100"
                   aria-label={`Load ${i + 1} number`}
                 />
                 <input
                   type="datetime-local"
                   value={l.loadTime}
                   onChange={(e) => setLoadField(i, "loadTime", e.target.value)}
-                  className="col-span-5 h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                  disabled={initial.loadsLocked}
+                  className="col-span-5 h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900 disabled:cursor-not-allowed disabled:bg-zinc-100"
                   aria-label={`Load ${i + 1} time`}
                 />
                 <input
@@ -186,24 +201,30 @@ export function DraftEditor({ id, initial }: { id: string; initial: Initial }) {
                   onChange={(e) => setLoadField(i, "notes", e.target.value)}
                   className="col-span-4 h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
                 />
-                <button
-                  type="button"
-                  onClick={() => removeLoad(i)}
-                  className="col-span-1 rounded-md border border-zinc-300 bg-white text-xs font-medium text-zinc-600 hover:bg-zinc-100"
-                  aria-label={`Remove load ${l.loadNumber}`}
-                >
-                  &minus;
-                </button>
+                {!initial.loadsLocked ? (
+                  <button
+                    type="button"
+                    onClick={() => removeLoad(i)}
+                    className="col-span-1 rounded-md border border-zinc-300 bg-white text-xs font-medium text-zinc-600 hover:bg-zinc-100"
+                    aria-label={`Remove load ${l.loadNumber}`}
+                  >
+                    &minus;
+                  </button>
+                ) : (
+                  <span className="col-span-1" />
+                )}
               </li>
             ))}
           </ul>
-          <button
-            type="button"
-            onClick={addLoad}
-            className="mt-3 inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            + Add load
-          </button>
+          {!initial.loadsLocked ? (
+            <button
+              type="button"
+              onClick={addLoad}
+              className="mt-3 inline-flex h-9 items-center rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              + Add load
+            </button>
+          ) : null}
         </Section>
 
         <Section title="End of haul">

@@ -97,12 +97,15 @@ function computeTotalHours(start: Date | null | undefined, end: Date | null | un
 
 export async function createDraft(operatorId: string, input: CreateTicketInput) {
   // Pre-fill from dispatch if linked: copies project / truck / equipment /
-  // pickup+delivery / start time. Tickets without a dispatch are allowed.
+  // pickup+delivery / start time, AND auto-populates the load entries from
+  // DispatchLoad rows recorded by the geofence flow. Tickets without a
+  // dispatch (manual ones) are still allowed.
   let prefill: Prisma.TicketCreateInput | null = null;
+  let prefilledLoadEntries: Array<{ loadNumber: number; loadTime: Date | null }> = [];
   if (input.dispatchId) {
     const d = await prisma.dispatch.findUnique({
       where: { id: input.dispatchId },
-      include: { truck: true, project: true, trip: true },
+      include: { truck: true, project: true, trip: true, loads: { orderBy: { loadNumber: "asc" } } },
     });
     if (!d) throw new TicketError("NOT_FOUND", "Dispatch not found.");
     if (d.operatorId !== operatorId) {
@@ -127,6 +130,15 @@ export async function createDraft(operatorId: string, input: CreateTicketInput) 
       truck: { connect: { id: d.truckId } },
       dispatch: { connect: { id: d.id } },
     };
+    // Each completed DispatchLoad becomes a load entry. Pickup time wins
+    // over dropoff for the "loadTime" column to match what an operator
+    // would have written down at the pickup.
+    prefilledLoadEntries = d.loads
+      .filter((l) => l.dropoffAt != null)
+      .map((l) => ({
+        loadNumber: l.loadNumber,
+        loadTime: l.pickupAt ?? l.dropoffAt,
+      }));
   }
 
   const ticketNumber = await nextTicketNumber();
@@ -141,6 +153,14 @@ export async function createDraft(operatorId: string, input: CreateTicketInput) 
     ...(input.truckId ? { truck: { connect: { id: input.truckId } } } : {}),
   };
   data.ticketNumber = ticketNumber;
+  if (prefilledLoadEntries.length > 0) {
+    data.loadEntries = {
+      create: prefilledLoadEntries.map((e) => ({
+        loadNumber: e.loadNumber,
+        loadTime: e.loadTime,
+      })),
+    };
+  }
 
   return prisma.ticket.create({ data });
 }
@@ -181,8 +201,33 @@ export async function replaceLoadEntries(
   ticketId: string,
   entries: LoadEntryInput[],
 ): Promise<void> {
-  await loadOwnDraft(operatorId, ticketId);
-  // Validate entries
+  const draft = await loadOwnDraft(operatorId, ticketId);
+  // Tickets linked to a dispatch get their load entries from the geofence
+  // flow's DispatchLoad rows — clients can only update notes, not the
+  // count / timing. Silently ignore the request if it tries to mutate
+  // anything besides notes for an already-recorded entry.
+  if (draft.dispatchId) {
+    const existing = await prisma.ticketLoadEntry.findMany({
+      where: { ticketId },
+      orderBy: { loadNumber: "asc" },
+    });
+    // Only allow notes updates on matching loadNumber rows; ignore anything
+    // else (UI shouldn't send it, but guard server-side anyway).
+    const updates = entries
+      .map((e) => {
+        const match = existing.find((x) => x.loadNumber === e.loadNumber);
+        if (!match) return null;
+        return { id: match.id, notes: e.notes?.trim() || null };
+      })
+      .filter((u): u is { id: string; notes: string | null } => u !== null);
+    await prisma.$transaction(
+      updates.map((u) =>
+        prisma.ticketLoadEntry.update({ where: { id: u.id }, data: { notes: u.notes } }),
+      ),
+    );
+    return;
+  }
+  // Validate entries (manual tickets only)
   const seen = new Set<number>();
   for (const e of entries) {
     if (!Number.isInteger(e.loadNumber) || e.loadNumber < 1) {

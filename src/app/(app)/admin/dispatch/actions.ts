@@ -41,6 +41,7 @@ export async function createDispatchAction(
       pickupNote: String(formData.get("pickupNote") ?? "") || null,
       dumpNote: String(formData.get("dumpNote") ?? "") || null,
       notes: String(formData.get("notes") ?? "") || null,
+      loadsAssigned: Math.trunc(Number(formData.get("loadsAssigned") ?? 1)),
     });
   } catch (e) {
     if (e instanceof DispatchError) return { status: "error", error: e.message };
@@ -71,6 +72,7 @@ export async function updateDispatchAction(
       pickupNote: String(formData.get("pickupNote") ?? "") || null,
       dumpNote: String(formData.get("dumpNote") ?? "") || null,
       notes: String(formData.get("notes") ?? "") || null,
+      loadsAssigned: Math.trunc(Number(formData.get("loadsAssigned") ?? 1)),
     });
   } catch (e) {
     if (e instanceof DispatchError) return { status: "error", error: e.message };

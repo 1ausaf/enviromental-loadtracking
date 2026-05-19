@@ -11,6 +11,11 @@ export const GPS_MIN_DISTANCE_M = 200; // 200 metres
 export const GPS_LOCK_INTERVAL_MS = 3_000;
 export const GPS_LOCK_DISTANCE_M = 0;
 
+// Geofence radius for pickup / drop arrival detection. 50m balances "you're
+// actually here" against typical phone GPS accuracy of 5-20m (a 10m fence
+// would be unreachable under tree cover or in a metal warehouse).
+export const GEOFENCE_RADIUS_M = 50;
+
 // Distance in metres between two lat/lng pairs (Haversine).
 export function haversineMetres(
   aLat: number,

@@ -60,7 +60,7 @@ export default function MapReplay({ points }: { points: ReplayPoint[] }) {
         <Popup>
           <strong>Start</strong>
           <br />
-          {new Date(points[0]!.recordedAt).toLocaleString()}
+          {new Date(points[0]!.recordedAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}
         </Popup>
       </Marker>
       {positions.length > 1 ? (
@@ -68,7 +68,7 @@ export default function MapReplay({ points }: { points: ReplayPoint[] }) {
           <Popup>
             <strong>End</strong>
             <br />
-            {new Date(points[points.length - 1]!.recordedAt).toLocaleString()}
+            {new Date(points[points.length - 1]!.recordedAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}
           </Popup>
         </Marker>
       ) : null}

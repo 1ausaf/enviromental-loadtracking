@@ -38,11 +38,13 @@ export type TicketViewModel = {
 };
 
 const dateFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   year: "numeric",
   month: "short",
   day: "numeric",
 });
 const dtFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   year: "numeric",
   month: "short",
   day: "numeric",
@@ -50,6 +52,7 @@ const dtFmt = new Intl.DateTimeFormat("en-CA", {
   minute: "2-digit",
 });
 const timeFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Toronto",
   hour: "numeric",
   minute: "2-digit",
 });
